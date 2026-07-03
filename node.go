@@ -58,36 +58,53 @@ func (n *Node) AppendEntries(ctx context.Context, request *proto.AppendEntriesRe
 	}
 
 	// 1. Reply false if term < currentTerm (§5.1)
-	if n.currentTerm < request.Term {
+	if request.Term < n.currentTerm {
 		return &response, nil
 	}
 
-	// 2. Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)
-	if request.PrevLogIndex > 0 { // check to ensure that this is not the first entry
-		if int(request.PrevLogIndex) > len(n.log) { // bounds checking
+	// 2. Reply false if n.log doesn’t contain an entry at request.PrevLogIndex whose term matches request.PrevLogTerm (§5.3)
+	if request.PrevLogIndex > 0 {
+		if int(request.PrevLogIndex) > len(n.log) {
 			return &response, nil
 		}
 
-		entry := n.log[request.PrevLogIndex-1]
-		if entry.Term != request.PrevLogTerm {
+		prevEntry := n.log[request.PrevLogIndex-1]
+		if prevEntry.Term != request.PrevLogTerm {
 			return &response, nil
 		}
+	}
 
-		// 3. If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it (§5.3)
-		for _, entry := range request.Entries {
-			if n.log[entry.Index-1].Term != entry.Term {
-				n.log = n.log[:entry.Index-1]
-				break
-			}
+	// 3. If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it (§5.3)
+	var newEntries []*proto.LogEntry
+	for i, e := range request.Entries {
+		if int(e.Index) > len(n.log) { // we know that this must be +=1 from the last entry in n.log because of the 2nd clause
+			newEntries = request.Entries[i:]
+			break
+		}
+
+		if e.Term != n.log[e.Index-1].Term {
+			n.log = n.log[:e.Index-1]
+			newEntries = request.Entries[i:]
+			break
 		}
 	}
 
 	// 4. Append any new entries not already in the log
-	n.log = append(n.log, request.Entries...)
+	n.log = append(n.log, newEntries...)
 
 	// 5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
+	if request.LeaderCommit > n.commitIndex {
+		lastIndex := uint64(len(n.log))
+		if len(request.Entries) > 0 {
+			lastIndex = request.Entries[len(request.Entries)-1].Index
+		}
+		n.commitIndex = min(request.LeaderCommit, lastIndex)
+	}
 
 	response.Success = true
 	return &response, nil
 }
-func (n *Node) RequestVote(ctx context.Context, request *proto.RequestVoteRequest) (*proto.RequestVoteResponse, error)
+
+func (n *Node) RequestVote(ctx context.Context, request *proto.RequestVoteRequest) (*proto.RequestVoteResponse, error) {
+	return &proto.RequestVoteResponse{}, nil
+}
