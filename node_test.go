@@ -11,6 +11,7 @@ func TestNode_AppendEntries(t *testing.T) {
 	tests := []struct {
 		name          string
 		initialLog    []*proto.LogEntry
+		initialTerm   uint64
 		initialCommit uint64
 		request       *proto.AppendEntriesRequest
 		wantLog       []*proto.LogEntry
@@ -49,8 +50,22 @@ func TestNode_AppendEntries(t *testing.T) {
 			wantErr:     false,
 		},
 		{
-			name: "stale term rejected",
-			// ...
+			name:          "stale term rejected",
+			initialLog:    []*proto.LogEntry{},
+			initialTerm:   2,
+			initialCommit: 0,
+			request: &proto.AppendEntriesRequest{
+				Term:         1,
+				LeaderId:     "test-id",
+				PrevLogIndex: 0,
+				PrevLogTerm:  0,
+				Entries:      []*proto.LogEntry{},
+				LeaderCommit: 1,
+			},
+			wantLog:     []*proto.LogEntry{},
+			wantCommit:  0,
+			wantSuccess: false,
+			wantErr:     false,
 		},
 		{
 			name: "conflicting entry truncates log",
@@ -68,6 +83,10 @@ func TestNode_AppendEntries(t *testing.T) {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
 
+			n.log = tt.initialLog
+			n.currentTerm = tt.initialTerm
+			n.commitIndex = tt.initialCommit
+
 			got, gotErr := n.AppendEntries(context.Background(), tt.request)
 			if gotErr != nil {
 				if !tt.wantErr {
@@ -79,19 +98,22 @@ func TestNode_AppendEntries(t *testing.T) {
 				t.Fatal("AppendEntries() succeeded unexpectedly")
 			}
 
-			if got.Success {
-				if !tt.wantSuccess {
-					t.Fatal("RPC suceeded unexpectedly")
+			if !got.Success {
+				if tt.wantSuccess {
+					t.Fatal("RPC failed")
 				}
 				return
+			}
+			if !tt.wantSuccess {
+				t.Fatal("RPC suceeded unexpectedly")
 			}
 
 			if n.commitIndex != tt.wantCommit {
 				t.Fatalf("commitIndex does not match: got %d, want %d", n.commitIndex, tt.wantCommit)
 			}
 
-			if !slices.Equal(n.log, tt.wantLog) {
-				t.Fatalf("logs do not match: got %v+, want %v+", n.log, tt.wantLog)
+			if !reflect.DeepEqual(n.log, tt.wantLog) {
+				t.Fatalf("logs do not match: got %v, want %v", n.log, tt.wantLog)
 			}
 
 		})
