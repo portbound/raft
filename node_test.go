@@ -25,7 +25,7 @@ func TestNode_AppendEntries(t *testing.T) {
 				{
 					Index: 1,
 					Term:  1,
-					Data:  []byte("test"),
+					Data:  []byte{},
 				},
 			},
 			initialTerm:   0,
@@ -42,7 +42,7 @@ func TestNode_AppendEntries(t *testing.T) {
 				{
 					Index: 1,
 					Term:  1,
-					Data:  []byte("test"),
+					Data:  []byte{},
 				},
 			},
 			wantCommit:  1,
@@ -69,11 +69,84 @@ func TestNode_AppendEntries(t *testing.T) {
 		},
 		{
 			name: "conflicting entry truncates log",
-			// ...
-		},
-		{
-			name: "follower has stale trailing entries beyond request.Entries",
-			// the case I flagged above
+			initialLog: []*proto.LogEntry{
+				{
+					Index: 1,
+					Term:  1,
+					Data:  []byte{},
+				},
+				{
+					Index: 2,
+					Term:  2,
+					Data:  []byte{},
+				},
+				{
+					Index: 3,
+					Term:  3,
+					Data:  []byte{},
+				},
+				{
+					Index: 4,
+					Term:  3,
+					Data:  []byte{},
+				},
+				{
+					Index: 5,
+					Term:  3,
+					Data:  []byte{},
+				},
+			},
+			initialTerm:   3,
+			initialCommit: 0,
+			request: &proto.AppendEntriesRequest{
+				Term:         4,
+				LeaderId:     "test-id",
+				PrevLogIndex: 3,
+				PrevLogTerm:  3,
+				Entries: []*proto.LogEntry{
+					{
+						Index: 4,
+						Term:  4,
+						Data:  []byte{},
+					},
+					{
+						Index: 5,
+						Term:  4,
+						Data:  []byte{},
+					},
+				},
+				LeaderCommit: 3,
+			},
+			wantLog: []*proto.LogEntry{
+				{
+					Index: 1,
+					Term:  1,
+					Data:  []byte{},
+				},
+				{
+					Index: 2,
+					Term:  2,
+					Data:  []byte{},
+				},
+				{
+					Index: 3,
+					Term:  3,
+					Data:  []byte{},
+				},
+				{
+					Index: 4,
+					Term:  4,
+					Data:  []byte{},
+				},
+				{
+					Index: 5,
+					Term:  4,
+					Data:  []byte{},
+				},
+			},
+			wantCommit:  3,
+			wantSuccess: true,
+			wantErr:     false,
 		},
 	}
 	for _, tt := range tests {
