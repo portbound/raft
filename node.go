@@ -106,5 +106,22 @@ func (n *Node) AppendEntries(ctx context.Context, request *proto.AppendEntriesRe
 }
 
 func (n *Node) RequestVote(ctx context.Context, request *proto.RequestVoteRequest) (*proto.RequestVoteResponse, error) {
-	return &proto.RequestVoteResponse{}, nil
+	response := proto.RequestVoteResponse{
+		Term:        n.currentTerm,
+		VoteGranted: false,
+	}
+
+	// 1. Reply false if term < currentTerm (§5.1)
+	if request.Term < n.currentTerm {
+		return &response, nil
+	}
+
+	// 2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
+	if n.votedFor == "" || n.votedFor == request.CandidateId {
+		// // if request.LastLogIndex == n.log[len(n.log)-1].Index {
+		// 	response.VoteGranted = true
+		// }
+	}
+
+	return &response, nil
 }
