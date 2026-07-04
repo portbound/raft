@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"portbound/raft/proto"
-	"slices"
+	"reflect"
 	"testing"
 )
 
@@ -20,7 +20,33 @@ func TestNode_AppendEntries(t *testing.T) {
 	}{
 		{
 			name: "heartbeat with no new entries advances commitIndex",
-			// ...
+			initialLog: []*proto.LogEntry{
+				{
+					Index: 1,
+					Term:  1,
+					Data:  []byte("test"),
+				},
+			},
+			initialTerm:   0,
+			initialCommit: 0,
+			request: &proto.AppendEntriesRequest{
+				Term:         1,
+				LeaderId:     "test-id",
+				PrevLogIndex: 0,
+				PrevLogTerm:  0,
+				Entries:      []*proto.LogEntry{},
+				LeaderCommit: 1,
+			},
+			wantLog: []*proto.LogEntry{
+				{
+					Index: 1,
+					Term:  1,
+					Data:  []byte("test"),
+				},
+			},
+			wantCommit:  1,
+			wantSuccess: true,
+			wantErr:     false,
 		},
 		{
 			name: "stale term rejected",
