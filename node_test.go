@@ -201,6 +201,49 @@ func TestNode_RequestVote(t *testing.T) {
 		wantVoteGranted bool
 		wantErr         bool
 	}{
+		{
+			name: "voteGranted to candidate with matching log",
+			log: []*proto.LogEntry{
+				{
+					Index: 1,
+					Term:  1,
+					Data:  []byte{},
+				},
+				{
+					Index: 2,
+					Term:  1,
+					Data:  []byte{},
+				},
+				{
+					Index: 3,
+					Term:  1,
+					Data:  []byte{},
+				},
+				{
+					Index: 4,
+					Term:  2,
+					Data:  []byte{},
+				},
+				{
+					Index: 5,
+					Term:  2,
+					Data:  []byte{},
+				},
+				{
+					Index: 6,
+					Term:  3,
+					Data:  []byte{},
+				},
+			},
+			request: &proto.RequestVoteRequest{
+				Term:         4,
+				CandidateId:  "test-candidate",
+				LastLogIndex: 6,
+				LastLogTerm:  3,
+			},
+			wantVoteGranted: true,
+			wantErr:         false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
