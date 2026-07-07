@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"portbound/raft/proto"
 	"reflect"
 	"testing"
@@ -155,12 +154,11 @@ func TestNode_AppendEntries(t *testing.T) {
 			if err != nil {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
-
 			n.log = tt.initialLog
 			n.currentTerm = tt.initialTerm
 			n.commitIndex = tt.initialCommit
 
-			got, gotErr := n.AppendEntries(context.Background(), tt.request)
+			got, gotErr := n.AppendEntries(t.Context(), tt.request)
 			if gotErr != nil {
 				if !tt.wantErr {
 					t.Errorf("AppendEntries() failed: %v", gotErr)
@@ -189,6 +187,44 @@ func TestNode_AppendEntries(t *testing.T) {
 				t.Fatalf("logs do not match: got %v, want %v", n.log, tt.wantLog)
 			}
 
+		})
+	}
+}
+
+func TestNode_RequestVote(t *testing.T) {
+	tests := []struct {
+		name            string
+		log             []*proto.LogEntry
+		term            uint64
+		votedFor        string
+		request         *proto.RequestVoteRequest
+		wantVoteGranted bool
+		wantErr         bool
+	}{
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, err := NewNode("test-node", "test-addr", map[string]string{})
+			if err != nil {
+				t.Fatalf("could not construct receiver type: %v", err)
+			}
+			n.log = tt.log
+			n.currentTerm = tt.term
+
+			got, gotErr := n.RequestVote(t.Context(), tt.request)
+			if gotErr != nil {
+				if !tt.wantErr {
+					t.Errorf("RequestVote() failed: %v", gotErr)
+				}
+				return
+			}
+			if tt.wantErr {
+				t.Fatal("RequestVote() succeeded unexpectedly")
+			}
+
+			if got.VoteGranted != tt.wantVoteGranted {
+				t.Fatalf("RPC failed: got %v, want %v", got.VoteGranted, tt.wantVoteGranted)
+			}
 		})
 	}
 }
