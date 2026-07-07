@@ -118,9 +118,15 @@ func (n *Node) RequestVote(ctx context.Context, request *proto.RequestVoteReques
 
 	// 2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
 	if n.votedFor == "" || n.votedFor == request.CandidateId {
-		// // if request.LastLogIndex == n.log[len(n.log)-1].Index {
-		// 	response.VoteGranted = true
-		// }
+		if request.LastLogTerm < n.log[len(n.log)-1].Term {
+			return &response, nil
+		}
+
+		if request.LastLogIndex < n.log[len(n.log)-1].Index {
+			return &response, nil
+		}
+
+		response.VoteGranted = true
 	}
 
 	return &response, nil
