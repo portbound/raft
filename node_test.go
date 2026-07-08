@@ -235,6 +235,7 @@ func TestNode_RequestVote(t *testing.T) {
 					Data:  []byte{},
 				},
 			},
+			term: 4,
 			request: &proto.RequestVoteRequest{
 				Term:         4,
 				CandidateId:  "test-candidate",
@@ -242,6 +243,50 @@ func TestNode_RequestVote(t *testing.T) {
 				LastLogTerm:  3,
 			},
 			wantVoteGranted: true,
+			wantErr:         false,
+		},
+		{
+			name: "vote denied - request term behind",
+			log: []*proto.LogEntry{
+				{
+					Index: 1,
+					Term:  1,
+					Data:  []byte{},
+				},
+				{
+					Index: 2,
+					Term:  1,
+					Data:  []byte{},
+				},
+				{
+					Index: 3,
+					Term:  1,
+					Data:  []byte{},
+				},
+				{
+					Index: 4,
+					Term:  2,
+					Data:  []byte{},
+				},
+				{
+					Index: 5,
+					Term:  2,
+					Data:  []byte{},
+				},
+				{
+					Index: 6,
+					Term:  3,
+					Data:  []byte{},
+				},
+			},
+			term: 5,
+			request: &proto.RequestVoteRequest{
+				Term:         4,
+				CandidateId:  "test-candidate",
+				LastLogIndex: 6,
+				LastLogTerm:  3,
+			},
+			wantVoteGranted: false,
 			wantErr:         false,
 		},
 	}
