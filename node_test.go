@@ -235,7 +235,8 @@ func TestNode_RequestVote(t *testing.T) {
 					Data:  []byte{},
 				},
 			},
-			term: 4,
+			term:     4,
+			votedFor: "",
 			request: &proto.RequestVoteRequest{
 				Term:         4,
 				CandidateId:  "test-candidate",
@@ -246,40 +247,24 @@ func TestNode_RequestVote(t *testing.T) {
 			wantErr:         false,
 		},
 		{
-			name: "vote denied - request term behind",
-			log: []*proto.LogEntry{
-				{
-					Index: 1,
-					Term:  1,
-					Data:  []byte{},
-				},
-				{
-					Index: 2,
-					Term:  1,
-					Data:  []byte{},
-				},
-				{
-					Index: 3,
-					Term:  1,
-					Data:  []byte{},
-				},
-				{
-					Index: 4,
-					Term:  2,
-					Data:  []byte{},
-				},
-				{
-					Index: 5,
-					Term:  2,
-					Data:  []byte{},
-				},
-				{
-					Index: 6,
-					Term:  3,
-					Data:  []byte{},
-				},
+			name:     "vote denied for candidate with stale term",
+			log:      []*proto.LogEntry{},
+			term:     5,
+			votedFor: "",
+			request: &proto.RequestVoteRequest{
+				Term:         4,
+				CandidateId:  "test-candidate",
+				LastLogIndex: 6,
+				LastLogTerm:  3,
 			},
-			term: 5,
+			wantVoteGranted: false,
+			wantErr:         false,
+		},
+		{
+			name:     "vote denied by node with conflicting votedFor",
+			log:      []*proto.LogEntry{},
+			term:     4,
+			votedFor: "another-candidate",
 			request: &proto.RequestVoteRequest{
 				Term:         4,
 				CandidateId:  "test-candidate",
@@ -298,6 +283,7 @@ func TestNode_RequestVote(t *testing.T) {
 			}
 			n.log = tt.log
 			n.currentTerm = tt.term
+			n.votedFor = tt.votedFor
 
 			got, gotErr := n.RequestVote(t.Context(), tt.request)
 			if gotErr != nil {
