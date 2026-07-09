@@ -1,4 +1,4 @@
-package main
+package node
 
 import (
 	"context"
@@ -17,7 +17,6 @@ const (
 )
 
 type Node struct {
-	proto.UnimplementedRaftServer
 	id          string
 	addr        string
 	server      *grpc.Server
@@ -30,7 +29,7 @@ type Node struct {
 	lastApplied uint64
 }
 
-func NewNode(id, addr string, peers map[string]string) (*Node, error) {
+func New(id, addr string, peers map[string]string) (*Node, error) {
 	n := &Node{
 		id:    id,
 		addr:  addr,
@@ -44,9 +43,6 @@ func NewNode(id, addr string, peers map[string]string) (*Node, error) {
 		}
 		n.peers[id] = proto.NewRaftClient(conn)
 	}
-
-	n.server = grpc.NewServer()
-	proto.RegisterRaftServer(n.server, n)
 
 	return n, nil
 }

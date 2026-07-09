@@ -1,4 +1,4 @@
-package main
+package node
 
 import (
 	"portbound/raft/proto"
@@ -150,7 +150,7 @@ func TestNode_AppendEntries(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n, err := NewNode("test-node", "test-addr", map[string]string{})
+			n, err := New("test-node", "test-addr", map[string]string{})
 			if err != nil {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
@@ -277,7 +277,7 @@ func TestNode_RequestVote(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n, err := NewNode("test-node", "test-addr", map[string]string{})
+			n, err := New("test-node", "test-addr", map[string]string{})
 			if err != nil {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
