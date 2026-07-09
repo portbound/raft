@@ -16,15 +16,46 @@ const (
 	Follower
 )
 
+type AppendEntriesRequest struct {
+	Term         uint64
+	LeaderId     string
+	PrevLogIndex uint64
+	PrevLogTerm  uint64
+	Entries      []*LogEntry
+	LeaderCommit uint64
+}
+
+type AppendEntriesResponse struct {
+	Term    uint64
+	Success bool
+}
+
+type RequestVoteRequest struct {
+	Term         uint64
+	LastLogIndex uint64
+	LastLogTerm  uint64
+	CandidateId  string
+}
+
+type RequestVoteResponse struct {
+	Term        uint64
+	VoteGranted bool
+}
+
+type LogEntry struct {
+	Index uint64
+	Term  uint64
+	Data  []byte
+}
+
 type Node struct {
 	id          string
 	addr        string
-	server      *grpc.Server
 	peers       map[string]proto.RaftClient
 	role        Role
 	currentTerm uint64
 	votedFor    string
-	log         []*proto.LogEntry
+	log         []*LogEntry
 	commitIndex uint64
 	lastApplied uint64
 }
@@ -47,31 +78,30 @@ func New(id, addr string, peers map[string]string) (*Node, error) {
 	return n, nil
 }
 
-func (n *Node) AppendEntries(ctx context.Context, request *proto.AppendEntriesRequest) (*proto.AppendEntriesResponse, error) {
-	response := proto.AppendEntriesResponse{
+func (n *Node) AppendEntries(ctx context.Context, request *AppendEntriesRequest) *AppendEntriesResponse {
+	response := AppendEntriesResponse{
 		Term:    n.currentTerm,
 		Success: false,
 	}
-
 	// 1. Reply false if term < currentTerm (§5.1)
 	if request.Term < n.currentTerm {
-		return &response, nil
+		return &response
 	}
 
 	// 2. Reply false if n.log doesn’t contain an entry at request.PrevLogIndex whose term matches request.PrevLogTerm (§5.3)
 	if request.PrevLogIndex > 0 {
 		if int(request.PrevLogIndex) > len(n.log) {
-			return &response, nil
+			return &response
 		}
 
 		prevEntry := n.log[request.PrevLogIndex-1]
 		if prevEntry.Term != request.PrevLogTerm {
-			return &response, nil
+			return &response
 		}
 	}
 
 	// 3. If an existing entry conflicts with a new one (same index but different terms), delete the existing entry and all that follow it (§5.3)
-	var newEntries []*proto.LogEntry
+	var newEntries []*LogEntry
 	for i, e := range request.Entries {
 		if int(e.Index) > len(n.log) { // we know that this must be +=1 from the last entry in n.log because of the 2nd clause
 			newEntries = request.Entries[i:]
@@ -98,32 +128,38 @@ func (n *Node) AppendEntries(ctx context.Context, request *proto.AppendEntriesRe
 	}
 
 	response.Success = true
-	return &response, nil
+
+	return &response
 }
 
-func (n *Node) RequestVote(ctx context.Context, request *proto.RequestVoteRequest) (*proto.RequestVoteResponse, error) {
-	response := proto.RequestVoteResponse{
+func (n *Node) RequestVote(ctx context.Context, request *RequestVoteRequest) *RequestVoteResponse {
+	response := RequestVoteResponse{
 		Term:        n.currentTerm,
 		VoteGranted: false,
 	}
 
 	// 1. Reply false if term < currentTerm (§5.1)
 	if request.Term < n.currentTerm {
-		return &response, nil
+		return &response
 	}
 
 	// 2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
-	if n.votedFor == "" || n.votedFor == request.CandidateId {
-		if request.LastLogTerm < n.log[len(n.log)-1].Term {
-			return &response, nil
-		}
-
-		if request.LastLogIndex < n.log[len(n.log)-1].Index {
-			return &response, nil
-		}
-
-		response.VoteGranted = true
+	if n.votedFor != "" && n.votedFor != request.CandidateId {
+		return &response
 	}
 
-	return &response, nil
+	if request.LastLogTerm < n.log[len(n.log)-1].Term {
+		return &response
+	}
+
+	if request.LastLogTerm == n.log[len(n.log)-1].Term {
+		if request.LastLogIndex < n.log[len(n.log)-1].Index {
+			return &response
+		}
+	}
+
+	n.votedFor = request.CandidateId
+	response.VoteGranted = true
+
+	return &response
 }

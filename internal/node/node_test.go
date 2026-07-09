@@ -1,7 +1,6 @@
 package node
 
 import (
-	"portbound/raft/proto"
 	"reflect"
 	"testing"
 )
@@ -9,18 +8,18 @@ import (
 func TestNode_AppendEntries(t *testing.T) {
 	tests := []struct {
 		name          string
-		initialLog    []*proto.LogEntry
+		initialLog    []*LogEntry
 		initialTerm   uint64
 		initialCommit uint64
-		request       *proto.AppendEntriesRequest
-		wantLog       []*proto.LogEntry
+		request       *AppendEntriesRequest
+		wantLog       []*LogEntry
 		wantCommit    uint64
 		wantSuccess   bool
 		wantErr       bool
 	}{
 		{
 			name: "heartbeat with no new entries advances commitIndex",
-			initialLog: []*proto.LogEntry{
+			initialLog: []*LogEntry{
 				{
 					Index: 1,
 					Term:  1,
@@ -29,15 +28,15 @@ func TestNode_AppendEntries(t *testing.T) {
 			},
 			initialTerm:   0,
 			initialCommit: 0,
-			request: &proto.AppendEntriesRequest{
+			request: &AppendEntriesRequest{
 				Term:         1,
 				LeaderId:     "test-id",
 				PrevLogIndex: 0,
 				PrevLogTerm:  0,
-				Entries:      []*proto.LogEntry{},
+				Entries:      []*LogEntry{},
 				LeaderCommit: 1,
 			},
-			wantLog: []*proto.LogEntry{
+			wantLog: []*LogEntry{
 				{
 					Index: 1,
 					Term:  1,
@@ -50,25 +49,25 @@ func TestNode_AppendEntries(t *testing.T) {
 		},
 		{
 			name:          "stale term rejected",
-			initialLog:    []*proto.LogEntry{},
+			initialLog:    []*LogEntry{},
 			initialTerm:   2,
 			initialCommit: 0,
-			request: &proto.AppendEntriesRequest{
+			request: &AppendEntriesRequest{
 				Term:         1,
 				LeaderId:     "test-id",
 				PrevLogIndex: 0,
 				PrevLogTerm:  0,
-				Entries:      []*proto.LogEntry{},
+				Entries:      []*LogEntry{},
 				LeaderCommit: 1,
 			},
-			wantLog:     []*proto.LogEntry{},
+			wantLog:     []*LogEntry{},
 			wantCommit:  0,
 			wantSuccess: false,
 			wantErr:     false,
 		},
 		{
 			name: "conflicting entry truncates log",
-			initialLog: []*proto.LogEntry{
+			initialLog: []*LogEntry{
 				{
 					Index: 1,
 					Term:  1,
@@ -97,12 +96,12 @@ func TestNode_AppendEntries(t *testing.T) {
 			},
 			initialTerm:   3,
 			initialCommit: 0,
-			request: &proto.AppendEntriesRequest{
+			request: &AppendEntriesRequest{
 				Term:         4,
 				LeaderId:     "test-id",
 				PrevLogIndex: 3,
 				PrevLogTerm:  3,
-				Entries: []*proto.LogEntry{
+				Entries: []*LogEntry{
 					{
 						Index: 4,
 						Term:  4,
@@ -116,7 +115,7 @@ func TestNode_AppendEntries(t *testing.T) {
 				},
 				LeaderCommit: 3,
 			},
-			wantLog: []*proto.LogEntry{
+			wantLog: []*LogEntry{
 				{
 					Index: 1,
 					Term:  1,
@@ -158,16 +157,7 @@ func TestNode_AppendEntries(t *testing.T) {
 			n.currentTerm = tt.initialTerm
 			n.commitIndex = tt.initialCommit
 
-			got, gotErr := n.AppendEntries(t.Context(), tt.request)
-			if gotErr != nil {
-				if !tt.wantErr {
-					t.Errorf("AppendEntries() failed: %v", gotErr)
-				}
-				return
-			}
-			if tt.wantErr {
-				t.Fatal("AppendEntries() succeeded unexpectedly")
-			}
+			got := n.AppendEntries(t.Context(), tt.request)
 
 			if !got.Success {
 				if tt.wantSuccess {
@@ -194,16 +184,16 @@ func TestNode_AppendEntries(t *testing.T) {
 func TestNode_RequestVote(t *testing.T) {
 	tests := []struct {
 		name            string
-		log             []*proto.LogEntry
+		log             []*LogEntry
 		term            uint64
 		votedFor        string
-		request         *proto.RequestVoteRequest
+		request         *RequestVoteRequest
 		wantVoteGranted bool
 		wantErr         bool
 	}{
 		{
 			name: "voteGranted to candidate with matching log",
-			log: []*proto.LogEntry{
+			log: []*LogEntry{
 				{
 					Index: 1,
 					Term:  1,
@@ -237,7 +227,7 @@ func TestNode_RequestVote(t *testing.T) {
 			},
 			term:     4,
 			votedFor: "",
-			request: &proto.RequestVoteRequest{
+			request: &RequestVoteRequest{
 				Term:         4,
 				CandidateId:  "test-candidate",
 				LastLogIndex: 6,
@@ -248,31 +238,29 @@ func TestNode_RequestVote(t *testing.T) {
 		},
 		{
 			name:     "vote denied for candidate with stale term",
-			log:      []*proto.LogEntry{},
+			log:      []*LogEntry{},
 			term:     5,
 			votedFor: "",
-			request: &proto.RequestVoteRequest{
+			request: &RequestVoteRequest{
 				Term:         4,
 				CandidateId:  "test-candidate",
 				LastLogIndex: 6,
 				LastLogTerm:  3,
 			},
 			wantVoteGranted: false,
-			wantErr:         false,
 		},
 		{
 			name:     "vote denied by node with conflicting votedFor",
-			log:      []*proto.LogEntry{},
+			log:      []*LogEntry{},
 			term:     4,
 			votedFor: "another-candidate",
-			request: &proto.RequestVoteRequest{
+			request: &RequestVoteRequest{
 				Term:         4,
 				CandidateId:  "test-candidate",
 				LastLogIndex: 6,
 				LastLogTerm:  3,
 			},
 			wantVoteGranted: false,
-			wantErr:         false,
 		},
 	}
 	for _, tt := range tests {
@@ -285,16 +273,7 @@ func TestNode_RequestVote(t *testing.T) {
 			n.currentTerm = tt.term
 			n.votedFor = tt.votedFor
 
-			got, gotErr := n.RequestVote(t.Context(), tt.request)
-			if gotErr != nil {
-				if !tt.wantErr {
-					t.Errorf("RequestVote() failed: %v", gotErr)
-				}
-				return
-			}
-			if tt.wantErr {
-				t.Fatal("RequestVote() succeeded unexpectedly")
-			}
+			got := n.RequestVote(t.Context(), tt.request)
 
 			if got.VoteGranted != tt.wantVoteGranted {
 				t.Fatalf("RPC failed: got %v, want %v", got.VoteGranted, tt.wantVoteGranted)

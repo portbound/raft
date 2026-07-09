@@ -4,7 +4,7 @@ import (
 	"log"
 	"net"
 	"portbound/raft/internal/node"
-	"portbound/raft/internal/transport"
+	"portbound/raft/internal/transport/rpc"
 	"portbound/raft/proto"
 
 	"google.golang.org/grpc"
@@ -23,7 +23,7 @@ func main() {
 		log.Fatalf("failed to establish connection to peers: %s", err)
 	}
 
-	proto.RegisterRaftServer(server, transport.New(node))
+	proto.RegisterRaftServer(server, rpc.New(node))
 
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
