@@ -133,6 +133,15 @@ func (n *Node) AppendEntries(ctx context.Context, request *AppendEntriesRequest)
 }
 
 func (n *Node) RequestVote(ctx context.Context, request *RequestVoteRequest) *RequestVoteResponse {
+
+	// probably want to extract to a function to "clear state"
+	if request.Term > n.currentTerm {
+		// need to aquire a mu or send these on a channel like nodeState since AppendEntries will also need to update these values
+		n.currentTerm = request.Term
+		n.role = Follower
+		n.votedFor = ""
+	}
+
 	response := RequestVoteResponse{
 		Term:        n.currentTerm,
 		VoteGranted: false,
@@ -148,13 +157,16 @@ func (n *Node) RequestVote(ctx context.Context, request *RequestVoteRequest) *Re
 		return &response
 	}
 
-	if request.LastLogTerm < n.log[len(n.log)-1].Term {
-		return &response
-	}
-
-	if request.LastLogTerm == n.log[len(n.log)-1].Term {
-		if request.LastLogIndex < n.log[len(n.log)-1].Index {
+	if len(n.log) > 0 {
+		if request.LastLogTerm < n.log[len(n.log)-1].Term {
 			return &response
+		}
+
+		if request.LastLogTerm == n.log[len(n.log)-1].Term {
+			if request.LastLogIndex < n.log[len(n.log)-1].Index {
+				return &response
+			}
+
 		}
 	}
 
