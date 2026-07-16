@@ -183,13 +183,12 @@ func TestNode_AppendEntries(t *testing.T) {
 
 func TestNode_RequestVote(t *testing.T) {
 	tests := []struct {
-		name            string
-		log             []*LogEntry
-		term            uint64
-		votedFor        string
-		request         *RequestVoteRequest
-		wantVoteGranted bool
-		wantErr         bool
+		name     string
+		log      []*LogEntry
+		term     uint64
+		votedFor string
+		request  *RequestVoteRequest
+		want     *RequestVoteResponse
 	}{
 		{
 			name: "voteGranted to candidate with matching log",
@@ -225,7 +224,7 @@ func TestNode_RequestVote(t *testing.T) {
 					Data:  []byte{},
 				},
 			},
-			term:     4,
+			term:     3,
 			votedFor: "",
 			request: &RequestVoteRequest{
 				Term:         4,
@@ -233,8 +232,10 @@ func TestNode_RequestVote(t *testing.T) {
 				LastLogIndex: 6,
 				LastLogTerm:  3,
 			},
-			wantVoteGranted: true,
-			wantErr:         false,
+			want: &RequestVoteResponse{
+				Term:        4,
+				VoteGranted: true,
+			},
 		},
 		{
 			name:     "vote denied for candidate with stale term",
@@ -247,7 +248,10 @@ func TestNode_RequestVote(t *testing.T) {
 				LastLogIndex: 6,
 				LastLogTerm:  3,
 			},
-			wantVoteGranted: false,
+			want: &RequestVoteResponse{
+				Term:        5,
+				VoteGranted: false,
+			},
 		},
 		{
 			name:     "vote denied by node with conflicting votedFor",
@@ -260,7 +264,26 @@ func TestNode_RequestVote(t *testing.T) {
 				LastLogIndex: 6,
 				LastLogTerm:  3,
 			},
-			wantVoteGranted: false,
+			want: &RequestVoteResponse{
+				Term:        4,
+				VoteGranted: false,
+			},
+		},
+		{
+			name:     "vote granted to node with empty log",
+			log:      []*LogEntry{},
+			term:     4,
+			votedFor: "",
+			request: &RequestVoteRequest{
+				Term:         4,
+				CandidateId:  "test-candidate",
+				LastLogIndex: 6,
+				LastLogTerm:  3,
+			},
+			want: &RequestVoteResponse{
+				Term:        4,
+				VoteGranted: true,
+			},
 		},
 	}
 	for _, tt := range tests {
@@ -275,8 +298,12 @@ func TestNode_RequestVote(t *testing.T) {
 
 			got := n.RequestVote(t.Context(), tt.request)
 
-			if got.VoteGranted != tt.wantVoteGranted {
-				t.Fatalf("RPC failed: got %v, want %v", got.VoteGranted, tt.wantVoteGranted)
+			if got.VoteGranted != tt.want.VoteGranted {
+				t.Fatalf("VoteGranted: got %v, want %v", got.VoteGranted, tt.want.VoteGranted)
+			}
+
+			if got.Term != tt.want.Term {
+				t.Fatalf("Term: got %v, want %v", got.Term, tt.want.Term)
 			}
 		})
 	}
