@@ -11,7 +11,7 @@ func TestNode_AppendEntries(t *testing.T) {
 		initialLog    []*LogEntry
 		initialTerm   uint64
 		initialCommit uint64
-		request       *AppendEntriesRequest
+		request       *AppendEntriesReq
 		wantLog       []*LogEntry
 		wantCommit    uint64
 		wantSuccess   bool
@@ -28,7 +28,7 @@ func TestNode_AppendEntries(t *testing.T) {
 			},
 			initialTerm:   0,
 			initialCommit: 0,
-			request: &AppendEntriesRequest{
+			request: &AppendEntriesReq{
 				Term:         1,
 				LeaderId:     "test-id",
 				PrevLogIndex: 0,
@@ -52,7 +52,7 @@ func TestNode_AppendEntries(t *testing.T) {
 			initialLog:    []*LogEntry{},
 			initialTerm:   2,
 			initialCommit: 0,
-			request: &AppendEntriesRequest{
+			request: &AppendEntriesReq{
 				Term:         1,
 				LeaderId:     "test-id",
 				PrevLogIndex: 0,
@@ -96,7 +96,7 @@ func TestNode_AppendEntries(t *testing.T) {
 			},
 			initialTerm:   3,
 			initialCommit: 0,
-			request: &AppendEntriesRequest{
+			request: &AppendEntriesReq{
 				Term:         4,
 				LeaderId:     "test-id",
 				PrevLogIndex: 3,
@@ -187,8 +187,8 @@ func TestNode_RequestVote(t *testing.T) {
 		log      []*LogEntry
 		term     uint64
 		votedFor string
-		request  *RequestVoteRequest
-		want     *RequestVoteResponse
+		request  *RequestVoteReq
+		want     *RequestVoteResp
 	}{
 		{
 			name: "voteGranted to candidate with matching log",
@@ -226,13 +226,13 @@ func TestNode_RequestVote(t *testing.T) {
 			},
 			term:     3,
 			votedFor: "",
-			request: &RequestVoteRequest{
+			request: &RequestVoteReq{
 				Term:         4,
 				CandidateId:  "test-candidate",
 				LastLogIndex: 6,
 				LastLogTerm:  3,
 			},
-			want: &RequestVoteResponse{
+			want: &RequestVoteResp{
 				Term:        4,
 				VoteGranted: true,
 			},
@@ -242,13 +242,13 @@ func TestNode_RequestVote(t *testing.T) {
 			log:      []*LogEntry{},
 			term:     5,
 			votedFor: "",
-			request: &RequestVoteRequest{
+			request: &RequestVoteReq{
 				Term:         4,
 				CandidateId:  "test-candidate",
 				LastLogIndex: 6,
 				LastLogTerm:  3,
 			},
-			want: &RequestVoteResponse{
+			want: &RequestVoteResp{
 				Term:        5,
 				VoteGranted: false,
 			},
@@ -258,13 +258,13 @@ func TestNode_RequestVote(t *testing.T) {
 			log:      []*LogEntry{},
 			term:     4,
 			votedFor: "another-candidate",
-			request: &RequestVoteRequest{
+			request: &RequestVoteReq{
 				Term:         4,
 				CandidateId:  "test-candidate",
 				LastLogIndex: 6,
 				LastLogTerm:  3,
 			},
-			want: &RequestVoteResponse{
+			want: &RequestVoteResp{
 				Term:        4,
 				VoteGranted: false,
 			},
@@ -274,13 +274,13 @@ func TestNode_RequestVote(t *testing.T) {
 			log:      []*LogEntry{},
 			term:     4,
 			votedFor: "",
-			request: &RequestVoteRequest{
+			request: &RequestVoteReq{
 				Term:         4,
 				CandidateId:  "test-candidate",
 				LastLogIndex: 6,
 				LastLogTerm:  3,
 			},
-			want: &RequestVoteResponse{
+			want: &RequestVoteResp{
 				Term:        4,
 				VoteGranted: true,
 			},

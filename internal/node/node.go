@@ -8,15 +8,15 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-type Role int
+type role int
 
 const (
-	Leader Role = iota
+	Leader role = iota
 	Candidate
 	Follower
 )
 
-type AppendEntriesRequest struct {
+type AppendEntriesReq struct {
 	Term         uint64
 	LeaderId     string
 	PrevLogIndex uint64
@@ -25,19 +25,19 @@ type AppendEntriesRequest struct {
 	LeaderCommit uint64
 }
 
-type AppendEntriesResponse struct {
+type AppendEntriesResp struct {
 	Term    uint64
 	Success bool
 }
 
-type RequestVoteRequest struct {
+type RequestVoteReq struct {
 	Term         uint64
 	LastLogIndex uint64
 	LastLogTerm  uint64
 	CandidateId  string
 }
 
-type RequestVoteResponse struct {
+type RequestVoteResp struct {
 	Term        uint64
 	VoteGranted bool
 }
@@ -49,15 +49,15 @@ type LogEntry struct {
 }
 
 type Node struct {
-	id          string
-	addr        string
-	peers       map[string]proto.RaftClient
-	role        Role
-	currentTerm uint64
-	votedFor    string
-	log         []*LogEntry
-	commitIndex uint64
-	lastApplied uint64
+	id                 string
+	addr               string
+	peers              map[string]proto.RaftClient
+	role               role
+	currentTerm        uint64
+	votedFor           string
+	log                []*LogEntry
+	commitIndex        uint64
+	lastApplied        uint64
 }
 
 func New(id, addr string, peers map[string]string) (*Node, error) {
