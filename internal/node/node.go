@@ -30,6 +30,11 @@ type AppendEntriesResp struct {
 	Success bool
 }
 
+type appendEntriesCall struct {
+	req     *AppendEntriesReq
+	results chan *AppendEntriesResp
+}
+
 type RequestVoteReq struct {
 	Term         uint64
 	LastLogIndex uint64
@@ -40,6 +45,11 @@ type RequestVoteReq struct {
 type RequestVoteResp struct {
 	Term        uint64
 	VoteGranted bool
+}
+
+type requestVoteCall struct {
+	req     *RequestVoteReq
+	results chan *RequestVoteResp
 }
 
 type LogEntry struct {
@@ -58,6 +68,8 @@ type Node struct {
 	log                []*LogEntry
 	commitIndex        uint64
 	lastApplied        uint64
+	requestVoteCalls   chan *requestVoteCall
+	appendEntriesCalls chan *appendEntriesCall
 }
 
 func New(id, addr string, peers map[string]string) (*Node, error) {
@@ -78,11 +90,58 @@ func New(id, addr string, peers map[string]string) (*Node, error) {
 	return n, nil
 }
 
-func (n *Node) AppendEntries(ctx context.Context, request *AppendEntriesRequest) *AppendEntriesResponse {
-	response := AppendEntriesResponse{
+func (n *Node) Submit(ctx context.Context, b []byte) error {
+	return nil
+}
+
+func (n *Node) Run() {
+	for {
+		select {
+		case call := <-n.appendEntriesCalls:
+			call.results <- n.appendEntries(call.req)
+		case call := <-n.requestVoteCalls:
+			call.results <- n.requestVote(call.req)
+		}
+	}
+}
+
+func (n *Node) HandleAppendEntries(ctx context.Context, req *AppendEntriesReq) *AppendEntriesResp {
+	results := make(chan *AppendEntriesResp, 1)
+	n.appendEntriesCalls <- &appendEntriesCall{
+		req:     req,
+		results: results,
+	}
+
+	select {
+	case resp := <-results:
+		return resp
+	case <-ctx.Done():
+		close(results)
+		return nil
+	}
+}
+
+func (n *Node) HandleRequestVote(ctx context.Context, req *RequestVoteReq) *RequestVoteResp {
+	results := make(chan *RequestVoteResp, 1)
+	n.requestVoteCalls <- &requestVoteCall{
+		req:     req,
+		results: results,
+	}
+
+	select {
+	case resp := <-results:
+		return resp
+	case <-ctx.Done():
+		return nil
+	}
+}
+
+func (n *Node) appendEntries(request *AppendEntriesReq) *AppendEntriesResp {
+	response := AppendEntriesResp{
 		Term:    n.currentTerm,
 		Success: false,
 	}
+
 	// 1. Reply false if term < currentTerm (§5.1)
 	if request.Term < n.currentTerm {
 		return &response
@@ -132,45 +191,42 @@ func (n *Node) AppendEntries(ctx context.Context, request *AppendEntriesRequest)
 	return &response
 }
 
-func (n *Node) RequestVote(ctx context.Context, request *RequestVoteRequest) *RequestVoteResponse {
-
-	// probably want to extract to a function to "clear state"
-	if request.Term > n.currentTerm {
-		// need to aquire a mu or send these on a channel like nodeState since AppendEntries will also need to update these values
-		n.currentTerm = request.Term
+func (n *Node) requestVote(req *RequestVoteReq) *RequestVoteResp {
+	if req.Term > n.currentTerm {
+		n.currentTerm = req.Term
 		n.role = Follower
 		n.votedFor = ""
 	}
 
-	response := RequestVoteResponse{
+	response := RequestVoteResp{
 		Term:        n.currentTerm,
 		VoteGranted: false,
 	}
 
 	// 1. Reply false if term < currentTerm (§5.1)
-	if request.Term < n.currentTerm {
+	if req.Term < n.currentTerm {
 		return &response
 	}
 
 	// 2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
-	if n.votedFor != "" && n.votedFor != request.CandidateId {
+	if n.votedFor != "" && n.votedFor != req.CandidateId {
 		return &response
 	}
 
 	if len(n.log) > 0 {
-		if request.LastLogTerm < n.log[len(n.log)-1].Term {
+		if req.LastLogTerm < n.log[len(n.log)-1].Term {
 			return &response
 		}
 
-		if request.LastLogTerm == n.log[len(n.log)-1].Term {
-			if request.LastLogIndex < n.log[len(n.log)-1].Index {
+		if req.LastLogTerm == n.log[len(n.log)-1].Term {
+			if req.LastLogIndex < n.log[len(n.log)-1].Index {
 				return &response
 			}
 
 		}
 	}
 
-	n.votedFor = request.CandidateId
+	n.votedFor = req.CandidateId
 	response.VoteGranted = true
 
 	return &response

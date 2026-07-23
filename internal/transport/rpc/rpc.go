@@ -16,9 +16,25 @@ func New(n *node.Node) *Server {
 }
 
 func (s *Server) AppendEntries(ctx context.Context, request *proto.AppendEntriesRequest) (*proto.AppendEntriesResponse, error) {
-	req := node.AppendEntriesRequest{}
+	entries := make([]*node.LogEntry, len(request.Entries))
+	for i, e := range request.Entries {
+		entries[i] = &node.LogEntry{
+			Index: e.Index,
+			Term:  e.Term,
+			Data:  e.Data,
+		}
+	}
 
-	resp := s.node.AppendEntries(ctx, &req)
+	req := node.AppendEntriesReq{
+		Term:         request.Term,
+		LeaderId:     request.LeaderId,
+		PrevLogIndex: request.PrevLogIndex,
+		PrevLogTerm:  request.PrevLogTerm,
+		Entries:      entries,
+		LeaderCommit: request.LeaderCommit,
+	}
+
+	resp := s.node.HandleAppendEntries(ctx, &req)
 	return &proto.AppendEntriesResponse{
 		Term:    resp.Term,
 		Success: resp.Success,
@@ -26,14 +42,12 @@ func (s *Server) AppendEntries(ctx context.Context, request *proto.AppendEntries
 }
 
 func (s *Server) RequestVote(ctx context.Context, request *proto.RequestVoteRequest) (*proto.RequestVoteResponse, error) {
-	req := node.RequestVoteRequest{
+	resp := s.node.HandleRequestVote(ctx, &node.RequestVoteReq{
 		Term:         request.Term,
 		LastLogIndex: request.LastLogIndex,
 		LastLogTerm:  request.LastLogTerm,
 		CandidateId:  request.CandidateId,
-	}
-
-	resp := s.node.RequestVote(ctx, &req)
+	})
 
 	return &proto.RequestVoteResponse{
 		Term:        resp.Term,
