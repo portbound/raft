@@ -157,7 +157,7 @@ func TestNode_AppendEntries(t *testing.T) {
 			n.currentTerm = tt.initialTerm
 			n.commitIndex = tt.initialCommit
 
-			got := n.AppendEntries(t.Context(), tt.request)
+			got := n.appendEntries(tt.request)
 
 			if !got.Success {
 				if tt.wantSuccess {
@@ -296,7 +296,7 @@ func TestNode_RequestVote(t *testing.T) {
 			n.currentTerm = tt.term
 			n.votedFor = tt.votedFor
 
-			got := n.RequestVote(t.Context(), tt.request)
+			got := n.requestVote(tt.request)
 
 			if got.VoteGranted != tt.want.VoteGranted {
 				t.Fatalf("VoteGranted: got %v, want %v", got.VoteGranted, tt.want.VoteGranted)
