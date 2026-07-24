@@ -2,7 +2,7 @@ package rpc
 
 import (
 	"context"
-	"portbound/raft/internal/node"
+	"portbound/raft/node"
 	"portbound/raft/proto"
 )
 

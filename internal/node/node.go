@@ -60,7 +60,8 @@ type LogEntry struct {
 
 type Node struct {
 	id                 string
-	addr               string
+	port               string
+	Addr               string
 	peers              map[string]proto.RaftClient
 	role               role
 	currentTerm        uint64
@@ -75,10 +76,11 @@ type Node struct {
 func New(id, addr string, peers map[string]string) (*Node, error) {
 	n := &Node{
 		id:    id,
-		addr:  addr,
+		Addr:  addr,
 		peers: map[string]proto.RaftClient{},
 	}
 
+	// does Node need to depend on gRPC? Shou this be moved out/abstracted away?
 	for id, addr := range peers {
 		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
