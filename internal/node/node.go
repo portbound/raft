@@ -2,10 +2,6 @@ package node
 
 import (
 	"context"
-	"portbound/raft/proto"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 type role int
@@ -15,6 +11,11 @@ const (
 	Candidate
 	Follower
 )
+
+type Peer interface {
+	AppendEntries(ctx context.Context, req *AppendEntriesReq) (*AppendEntriesResp, error)
+	RequestVote(ctx context.Context, req *RequestVoteReq) (*RequestVoteResp, error)
+}
 
 type AppendEntriesReq struct {
 	Term         uint64
@@ -60,9 +61,7 @@ type LogEntry struct {
 
 type Node struct {
 	id                 string
-	port               string
-	Addr               string
-	peers              map[string]proto.RaftClient
+	peers              map[string]Peer
 	role               role
 	currentTerm        uint64
 	votedFor           string
@@ -73,23 +72,11 @@ type Node struct {
 	appendEntriesCalls chan *appendEntriesCall
 }
 
-func New(id, addr string, peers map[string]string) (*Node, error) {
-	n := &Node{
+func New(id string, peers map[string]Peer) *Node {
+	return &Node{
 		id:    id,
-		Addr:  addr,
-		peers: map[string]proto.RaftClient{},
+		peers: peers,
 	}
-
-	// does Node need to depend on gRPC? Shou this be moved out/abstracted away?
-	for id, addr := range peers {
-		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if err != nil {
-			return nil, err
-		}
-		n.peers[id] = proto.NewRaftClient(conn)
-	}
-
-	return n, nil
 }
 
 func (n *Node) Submit(ctx context.Context, b []byte) error {
@@ -118,7 +105,6 @@ func (n *Node) HandleAppendEntries(ctx context.Context, req *AppendEntriesReq) *
 	case resp := <-results:
 		return resp
 	case <-ctx.Done():
-		close(results)
 		return nil
 	}
 }

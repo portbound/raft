@@ -1,21 +1,21 @@
-package rpc
+package transport
 
 import (
 	"context"
-	"portbound/raft/node"
+	"portbound/raft/internal/node"
 	"portbound/raft/proto"
 )
 
-type Server struct {
+type RaftServer struct {
 	proto.UnimplementedRaftServer
 	node *node.Node
 }
 
-func New(n *node.Node) *Server {
-	return &Server{node: n}
+func NewServer(n *node.Node) *RaftServer {
+	return &RaftServer{node: n}
 }
 
-func (s *Server) AppendEntries(ctx context.Context, request *proto.AppendEntriesRequest) (*proto.AppendEntriesResponse, error) {
+func (s *RaftServer) AppendEntries(ctx context.Context, request *proto.AppendEntriesRequest) (*proto.AppendEntriesResponse, error) {
 	entries := make([]*node.LogEntry, len(request.Entries))
 	for i, e := range request.Entries {
 		entries[i] = &node.LogEntry{
@@ -25,23 +25,22 @@ func (s *Server) AppendEntries(ctx context.Context, request *proto.AppendEntries
 		}
 	}
 
-	req := node.AppendEntriesReq{
+	resp := s.node.HandleAppendEntries(ctx, &node.AppendEntriesReq{
 		Term:         request.Term,
 		LeaderId:     request.LeaderId,
 		PrevLogIndex: request.PrevLogIndex,
 		PrevLogTerm:  request.PrevLogTerm,
 		Entries:      entries,
 		LeaderCommit: request.LeaderCommit,
-	}
+	})
 
-	resp := s.node.HandleAppendEntries(ctx, &req)
 	return &proto.AppendEntriesResponse{
 		Term:    resp.Term,
 		Success: resp.Success,
 	}, nil
 }
 
-func (s *Server) RequestVote(ctx context.Context, request *proto.RequestVoteRequest) (*proto.RequestVoteResponse, error) {
+func (s *RaftServer) RequestVote(ctx context.Context, request *proto.RequestVoteRequest) (*proto.RequestVoteResponse, error) {
 	resp := s.node.HandleRequestVote(ctx, &node.RequestVoteReq{
 		Term:         request.Term,
 		LastLogIndex: request.LastLogIndex,
