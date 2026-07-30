@@ -59,9 +59,14 @@ type LogEntry struct {
 	Data  []byte
 }
 
+type submission struct {
+	payload []byte
+	results chan error
+}
+
 type Node struct {
 	id                 string
-	peers              map[string]Peer
+	cluster            map[string]Peer
 	role               role
 	currentTerm        uint64
 	votedFor           string
@@ -72,10 +77,10 @@ type Node struct {
 	appendEntriesCalls chan *appendEntriesCall
 }
 
-func New(id string, peers map[string]Peer) *Node {
+func New(id string, cluster map[string]Peer) *Node {
 	return &Node{
-		id:    id,
-		peers: peers,
+		id:      id,
+		cluster: cluster,
 	}
 }
 
