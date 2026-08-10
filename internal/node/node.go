@@ -257,8 +257,15 @@ func (n *Node) beginElection() {
 	n.votedFor = n.id
 
 	responses := make(chan *RequestVoteResp)
+	peers := map[string]Peer{}
 
 	for id, peer := range n.cluster {
+		if id != n.id {
+			peers[id] = peer
+		}
+	}
+
+	for id, peer := range peers {
 		go func(id string, peer Peer) {
 			ctx, cancel := context.WithTimeout(context.Background(), MaxRPCTimeout) // TODO revisit the ctx timeout here
 			defer cancel()
