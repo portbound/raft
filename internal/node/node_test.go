@@ -4,27 +4,21 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 )
 
-type mockPeer struct{}
+type mockPeer struct {
+	id     string
+	rvResp *RequestVoteResp
+	aeResp *AppendEntriesResp
+}
 
-func (p *mockPeer) AppendEntries(ctx context.Context, req *AppendEntriesReq) (*AppendEntriesResp, error)
+func (p *mockPeer) AppendEntries(ctx context.Context, req *AppendEntriesReq) (*AppendEntriesResp, error) {
+	return p.aeResp, nil
+}
+
 func (p *mockPeer) RequestVote(ctx context.Context, req *RequestVoteReq) (*RequestVoteResp, error) {
-	// resp, err := p.client.RequestVote(ctx, &proto.RequestVoteRequest{
-	// 	Term:         req.Term,
-	// 	LastLogIndex: req.LastLogIndex,
-	// 	LastLogTerm:  req.LastLogTerm,
-	// 	CandidateId:  req.CandidateId,
-	// })
-	// if err != nil {
-	// 	return nil, err
-	// }
-	//
-	// return &node.RequestVoteResp{
-	// 	Term:        resp.Term,
-	// 	VoteGranted: resp.VoteGranted,
-	// }, nil
-
+	return p.rvResp, nil
 }
 
 func TestNode_appendEntries(t *testing.T) {
@@ -243,7 +237,7 @@ func TestNode_requestVote(t *testing.T) {
 					Data:  []byte{},
 				},
 			},
-			term:     3,
+			term:     4,
 			votedFor: "",
 			request: &RequestVoteReq{
 				Term:         4,
@@ -327,25 +321,49 @@ func TestNode_requestVote(t *testing.T) {
 
 func TestNode_beginElection(t *testing.T) {
 	tests := []struct {
-		name  string
-		id    string
-		peers map[string]Peer
+		name        string
+		candidateId string
+		peerResults map[string]*RequestVoteResp
+		wantWin     bool
 	}{
 		{
-			name: "Election won",
-			id:   "node-0",
-			peers: map[string]Peer{
-				"node-1": &mockPeer{},
-				"node-2": &mockPeer{},
-				"node-3": &mockPeer{},
-				"node-4": &mockPeer{},
+			name:        "Election won",
+			candidateId: "node-0",
+			peerResults: map[string]*RequestVoteResp{
+				"node-1": {Term: 1, VoteGranted: true},
+				"node-2": {Term: 1, VoteGranted: true},
+				"node-3": {Term: 1, VoteGranted: true},
+				"node-4": {Term: 1, VoteGranted: true},
 			},
+			wantWin: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n := New(tt.id, tt.peers)
-			n.beginElection()
+			cluster := map[string]Peer{}
+			for id, resp := range tt.peerResults {
+				cluster[id] = &mockPeer{rvResp: resp}
+			}
+
+			candidate := New(tt.candidateId, cluster)
+			cluster[tt.candidateId] = &mockPeer{}
+			candidate.cluster = cluster
+			candidate.log = append(candidate.log, &LogEntry{
+				Index: 0,
+				Term:  0,
+				Data:  []byte{},
+			})
+			candidate.electionResults = make(chan struct{})
+			candidate.beginElection()
+
+			select {
+			case <-candidate.electionResults:
+				if !tt.wantWin {
+					t.Fatal("Election won unexpectedly")
+				}
+			case <-time.After(MaxRPCTimeout + 50*time.Millisecond):
+				t.Fatalf("expected election to be won, but electionResults was never signaled")
+			}
 		})
 	}
 }
