@@ -254,26 +254,28 @@ func (n *Node) beginElection() {
 	n.role = Candidate
 	n.votedFor = n.id
 
-	responses := make(chan *RequestVoteResp)
 	peers := map[string]Peer{}
-
 	for id, peer := range n.cluster {
 		if id != n.id {
 			peers[id] = peer
 		}
 	}
 
+	req := &RequestVoteReq{
+		Term:         n.currentTerm,
+		LastLogIndex: n.log[len(n.log)-1].Index,
+		LastLogTerm:  n.log[len(n.log)-1].Term,
+		CandidateId:  n.id,
+	}
+
+	responses := make(chan *RequestVoteResp, len(peers))
+
 	for id, peer := range peers {
 		go func(id string, peer Peer) {
 			ctx, cancel := context.WithTimeout(context.Background(), MaxRPCTimeout) // TODO revisit the ctx timeout here
 			defer cancel()
 
-			resp, err := peer.RequestVote(ctx, &RequestVoteReq{
-				Term:         n.currentTerm,
-				LastLogIndex: n.log[len(n.log)-1].Index,
-				LastLogTerm:  n.log[len(n.log)-1].Term,
-				CandidateId:  n.id,
-			})
+			resp, err := peer.RequestVote(ctx, req)
 			if err != nil {
 				// TODO not sure how to handle this error - not going to return, but maybe logging is worth?
 				resp = &RequestVoteResp{VoteGranted: false}
@@ -283,20 +285,19 @@ func (n *Node) beginElection() {
 	}
 
 	go func(term uint64) {
-		defer close(responses)
 		var votesGranted int
 
-		for range len(n.cluster) - 1 {
+		for range len(peers) {
 			select {
 			case resp := <-responses:
 				// If the Node's current role is no longer Candidate, this means we've conceded to a new Leader and have reverted to follower
 				if n.role != Candidate {
-					break
+					return
 				}
 
-				// If the original term is smaller than the currentTerm, the electionTimer has expired and we've moved on to a new election.
+				// If the term is smaller than the currentTerm, the electionTimer has expired and we've moved on to a new election.
 				if n.currentTerm > term {
-					break
+					return
 				}
 
 				if resp.VoteGranted && resp.Term == term {
