@@ -9,7 +9,7 @@ import (
 type role int
 
 const (
-	Follower role = iota
+	Follower role = iota + 1
 	Candidate
 	Leader
 )
