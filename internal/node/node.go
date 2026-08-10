@@ -85,8 +85,11 @@ type Node struct {
 
 func New(id string, cluster map[string]Peer) *Node {
 	return &Node{
-		id:      id,
-		cluster: cluster,
+		id:          id,
+		cluster:     cluster,
+		role:        Follower,
+		currentTerm: 0,
+		log:         []*LogEntry{},
 	}
 }
 
@@ -95,10 +98,7 @@ func (n *Node) Submit(ctx context.Context, b []byte) error {
 }
 
 func (n *Node) Run() {
-	n.role = Follower
-	n.currentTerm = 1 // TODO (do we need to do this?)
 	n.electionTimer = newElectionTimer()
-
 	for {
 		select {
 		case call := <-n.appendEntriesCalls:
