@@ -276,7 +276,7 @@ func (n *Node) beginElection() {
 			})
 			if err != nil {
 				// TODO not sure how to handle this error - not going to return, but maybe logging is worth?
-				resp.VoteGranted = false
+				resp = &RequestVoteResp{VoteGranted: false}
 			}
 			responses <- resp
 		}(id, peer)
