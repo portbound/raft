@@ -80,7 +80,7 @@ type Node struct {
 	lastApplied        uint64
 	requestVoteCalls   chan *requestVoteCall
 	appendEntriesCalls chan *appendEntriesCall
-	electionResults    chan uint64
+	electionResults    chan struct{}
 }
 
 func New(id string, cluster map[string]Peer) *Node {
@@ -107,10 +107,8 @@ func (n *Node) Run() {
 			call.results <- n.requestVote(call.req)
 		case <-n.electionTimer.C:
 			n.beginElection()
-		case term := <-n.electionResults:
-			if n.currentTerm == term {
-				// TODO time to lead
-			}
+		case <-n.electionResults:
+			// TODO go lead
 		}
 	}
 }
@@ -304,7 +302,7 @@ func (n *Node) beginElection() {
 				if resp.VoteGranted && resp.Term == term {
 					votesGranted++
 					if votesGranted >= (len(n.cluster)/2)+1 {
-						n.electionResults <- term
+						n.electionResults <- struct{}{}
 						return
 					}
 				}
@@ -313,7 +311,6 @@ func (n *Node) beginElection() {
 			}
 		}
 	}(n.currentTerm)
-
 }
 
 func newElectionTimer() *time.Timer {
