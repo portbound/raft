@@ -9,9 +9,9 @@ import (
 type role int
 
 const (
-	Leader role = iota
+	Follower role = iota
 	Candidate
-	Follower
+	Leader
 )
 
 const MaxRPCTimeout = 300 * time.Millisecond
