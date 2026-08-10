@@ -1,11 +1,33 @@
 package node
 
 import (
+	"context"
 	"reflect"
 	"testing"
 )
 
-func TestNode_AppendEntries(t *testing.T) {
+type mockPeer struct{}
+
+func (p *mockPeer) AppendEntries(ctx context.Context, req *AppendEntriesReq) (*AppendEntriesResp, error)
+func (p *mockPeer) RequestVote(ctx context.Context, req *RequestVoteReq) (*RequestVoteResp, error) {
+	// resp, err := p.client.RequestVote(ctx, &proto.RequestVoteRequest{
+	// 	Term:         req.Term,
+	// 	LastLogIndex: req.LastLogIndex,
+	// 	LastLogTerm:  req.LastLogTerm,
+	// 	CandidateId:  req.CandidateId,
+	// })
+	// if err != nil {
+	// 	return nil, err
+	// }
+	//
+	// return &node.RequestVoteResp{
+	// 	Term:        resp.Term,
+	// 	VoteGranted: resp.VoteGranted,
+	// }, nil
+
+}
+
+func TestNode_appendEntries(t *testing.T) {
 	tests := []struct {
 		name          string
 		initialLog    []*LogEntry
@@ -178,7 +200,7 @@ func TestNode_AppendEntries(t *testing.T) {
 	}
 }
 
-func TestNode_RequestVote(t *testing.T) {
+func TestNode_requestVote(t *testing.T) {
 	tests := []struct {
 		name     string
 		log      []*LogEntry
@@ -285,7 +307,7 @@ func TestNode_RequestVote(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n := New("test-node", map[string]Peer{})
+			n := New("test_node", map[string]Peer{})
 			n.log = tt.log
 			n.currentTerm = tt.term
 			n.votedFor = tt.votedFor
@@ -299,6 +321,31 @@ func TestNode_RequestVote(t *testing.T) {
 			if got.Term != tt.want.Term {
 				t.Fatalf("Term: got %v, want %v", got.Term, tt.want.Term)
 			}
+		})
+	}
+}
+
+func TestNode_beginElection(t *testing.T) {
+	tests := []struct {
+		name  string
+		id    string
+		peers map[string]Peer
+	}{
+		{
+			name: "Election won",
+			id:   "node-0",
+			peers: map[string]Peer{
+				"node-1": &mockPeer{},
+				"node-2": &mockPeer{},
+				"node-3": &mockPeer{},
+				"node-4": &mockPeer{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n := New(tt.id, tt.peers)
+			n.beginElection()
 		})
 	}
 }

@@ -96,7 +96,7 @@ func (n *Node) Submit(ctx context.Context, b []byte) error {
 
 func (n *Node) Run() {
 	n.role = Follower
-	// TODO n.currentTerm = 1 (do we need to do this?)
+	n.currentTerm = 1 // TODO (do we need to do this?)
 	n.electionTimer = newElectionTimer()
 
 	for {
@@ -270,9 +270,8 @@ func (n *Node) beginElection() {
 				CandidateId:  n.id,
 			})
 			if err != nil {
-				// TODO log this
-				// if we get an error, we should probably send a response as false
-				// resp.VoteGranted = false
+				// TODO not sure how to handle this error - not going to return, but maybe logging is worth?
+				resp.VoteGranted = false
 			}
 			responses <- resp
 		}(id, peer)
@@ -282,9 +281,6 @@ func (n *Node) beginElection() {
 		defer close(responses)
 		var votesGranted int
 
-		// TODO trying to determine the best way to handle this
-		// If there are n nodes in the cluster, we only need to run this n-1 times
-		// Wait for a response to come in, or bail entirely after 300ms elapses
 		for range len(n.cluster) - 1 {
 			select {
 			case resp := <-responses:
