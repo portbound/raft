@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"math/rand/v2"
+	"sync"
 	"time"
 )
 
@@ -13,8 +14,6 @@ const (
 	Candidate
 	Leader
 )
-
-const MaxRPCTimeout = 300 * time.Millisecond
 
 type Peer interface {
 	AppendEntries(ctx context.Context, req *AppendEntriesReq) (*AppendEntriesResp, error)
@@ -78,9 +77,12 @@ type Node struct {
 	log                []*LogEntry
 	commitIndex        uint64
 	lastApplied        uint64
+	mu                 sync.Mutex
+	electionCtx        context.Context
+	electionCancel     context.CancelFunc
+	electionWon        chan uint64
 	requestVoteCalls   chan *requestVoteCall
 	appendEntriesCalls chan *appendEntriesCall
-	electionResults    chan uint64
 }
 
 func New(id string, cluster map[string]Peer) *Node {
@@ -98,7 +100,7 @@ func (n *Node) Submit(ctx context.Context, b []byte) error {
 }
 
 func (n *Node) Run() {
-	n.electionTimer = newElectionTimer()
+	n.resetElectionTimer()
 	for {
 		select {
 		case call := <-n.appendEntriesCalls:
@@ -106,9 +108,11 @@ func (n *Node) Run() {
 		case call := <-n.requestVoteCalls:
 			call.results <- n.requestVote(call.req)
 		case <-n.electionTimer.C:
+			n.stopElection()
 			n.beginElection()
-		case term := <-n.electionResults:
+		case term := <-n.electionWon:
 			if n.role == Candidate && n.currentTerm == term {
+				n.stopElection()
 				// TODO go lead
 			}
 		}
@@ -275,12 +279,13 @@ func (n *Node) beginElection() {
 
 	responses := make(chan *RequestVoteResp, len(peers))
 
+	ctx, cancel := context.WithCancel(context.Background())
+	n.electionCtx = ctx
+	n.electionCancel = cancel
+
 	for id, peer := range peers {
 		go func(id string, peer Peer) {
-			ctx, cancel := context.WithTimeout(context.Background(), MaxRPCTimeout) // TODO revisit the ctx timeout here
-			defer cancel()
-
-			resp, err := peer.RequestVote(ctx, req)
+			resp, err := peer.RequestVote(n.electionCtx, req)
 			if err != nil {
 				// TODO not sure how to handle this error - not going to return, but maybe logging is worth?
 				resp = &RequestVoteResp{VoteGranted: false}
@@ -289,6 +294,8 @@ func (n *Node) beginElection() {
 		}(id, peer)
 	}
 
+	// need to reset the election timer before we begin processing results
+	n.resetElectionTimer()
 	go func(term uint64) {
 		votesGranted := 1
 		for range len(peers) {
@@ -297,17 +304,32 @@ func (n *Node) beginElection() {
 				if resp.VoteGranted && resp.Term == term {
 					votesGranted++
 					if votesGranted >= (len(n.cluster)/2)+1 {
-						n.electionResults <- term
+						n.electionWon <- term
 						return
 					}
 				}
-			case <-time.After(MaxRPCTimeout):
+			case <-n.electionCtx.Done():
 				return
 			}
 		}
 	}(n.currentTerm)
 }
 
-func newElectionTimer() *time.Timer {
-	return time.NewTimer(time.Duration(rand.IntN(300-150+1)+150) * time.Millisecond)
+func (n *Node) resetElectionTimer() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if n.electionTimer != nil {
+		n.electionTimer.Stop()
+	}
+
+	n.electionTimer = time.NewTimer(time.Duration(rand.IntN(300-150+1)+150) * time.Millisecond)
+}
+
+func (n *Node) stopElection() {
+	if n.electionCtx != nil {
+		n.electionCancel()
+		n.electionCancel = nil
+		n.electionCtx = nil
+	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"reflect"
 	"testing"
-	"time"
 )
 
 type mockPeer struct {
@@ -362,18 +361,18 @@ func TestNode_beginElection(t *testing.T) {
 			candidate := New(tt.candidateId, cluster)
 			cluster[tt.candidateId] = &mockPeer{}
 			candidate.cluster = cluster
-			candidate.electionResults = make(chan uint64, 1)
+			candidate.electionWon = make(chan uint64, 1)
 			candidate.beginElection()
 
 			select {
-			case term := <-candidate.electionResults:
+			case term := <-candidate.electionWon:
 				if !tt.wantWinElection {
 					t.Fatal("unexpectedly won election")
 				}
 				if term != tt.wantTerm {
 					t.Fatalf("stale term: got: %d, want: %d", term, tt.wantTerm)
 				}
-			case <-time.After(MaxRPCTimeout + 50*time.Millisecond):
+			case <-candidate.electionTimer.C:
 				if tt.wantWinElection {
 					t.Fatal("timed out waiting for election result")
 				}
