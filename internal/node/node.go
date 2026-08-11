@@ -35,8 +35,8 @@ type AppendEntriesResp struct {
 }
 
 type appendEntriesCall struct {
-	req     *AppendEntriesReq
-	results chan *AppendEntriesResp
+	recv  *AppendEntriesReq
+	reply chan *AppendEntriesResp
 }
 
 type RequestVoteReq struct {
@@ -52,8 +52,8 @@ type RequestVoteResp struct {
 }
 
 type requestVoteCall struct {
-	req     *RequestVoteReq
-	results chan *RequestVoteResp
+	recv  *RequestVoteReq
+	reply chan *RequestVoteResp
 }
 
 type LogEntry struct {
@@ -104,9 +104,14 @@ func (n *Node) Run() {
 	for {
 		select {
 		case call := <-n.appendEntriesCalls:
-			call.results <- n.appendEntries(call.req)
+			resp := n.appendEntries(call.recv)
+			if resp.Success {
+				n.stopElection()
+				n.resetElectionTimer()
+			}
+			call.reply <- resp
 		case call := <-n.requestVoteCalls:
-			call.results <- n.requestVote(call.req)
+			call.reply <- n.requestVote(call.recv)
 		case <-n.electionTimer.C:
 			n.stopElection()
 			n.beginElection()
@@ -120,30 +125,30 @@ func (n *Node) Run() {
 }
 
 func (n *Node) HandleAppendEntries(ctx context.Context, req *AppendEntriesReq) *AppendEntriesResp {
-	results := make(chan *AppendEntriesResp, 1)
+	resp := make(chan *AppendEntriesResp, 1)
 	n.appendEntriesCalls <- &appendEntriesCall{
-		req:     req,
-		results: results,
+		recv:  req,
+		reply: resp,
 	}
 
 	select {
-	case res := <-results:
-		return res
+	case reply := <-resp:
+		return reply
 	case <-ctx.Done():
 		return nil
 	}
 }
 
 func (n *Node) HandleRequestVote(ctx context.Context, req *RequestVoteReq) *RequestVoteResp {
-	results := make(chan *RequestVoteResp, 1)
+	resp := make(chan *RequestVoteResp, 1)
 	n.requestVoteCalls <- &requestVoteCall{
-		req:     req,
-		results: results,
+		recv:  req,
+		reply: resp,
 	}
 
 	select {
-	case resp := <-results:
-		return resp
+	case reply := <-resp:
+		return reply
 	case <-ctx.Done():
 		return nil
 	}
@@ -206,7 +211,6 @@ func (n *Node) appendEntries(req *AppendEntriesReq) *AppendEntriesResp {
 	}
 
 	response.Success = true
-	n.electionTimer = newElectionTimer() // TODO, I'm not sure if appendEntries() should be responsible for resetting the timer... but if we wait to reset outside of the function, we will need to interrogate the response to determine whether or not it was from a leader or not
 
 	return &response
 }
