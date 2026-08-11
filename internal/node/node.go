@@ -80,7 +80,7 @@ type Node struct {
 	lastApplied        uint64
 	requestVoteCalls   chan *requestVoteCall
 	appendEntriesCalls chan *appendEntriesCall
-	electionResults    chan struct{}
+	electionResults    chan uint64
 }
 
 func New(id string, cluster map[string]Peer) *Node {
@@ -107,8 +107,10 @@ func (n *Node) Run() {
 			call.results <- n.requestVote(call.req)
 		case <-n.electionTimer.C:
 			n.beginElection()
-		case <-n.electionResults:
-			// TODO go lead
+		case term := <-n.electionResults:
+			if n.role == Candidate && n.currentTerm == term {
+				// TODO go lead
+			}
 		}
 	}
 }
@@ -262,10 +264,13 @@ func (n *Node) beginElection() {
 	}
 
 	req := &RequestVoteReq{
-		Term:         n.currentTerm,
-		LastLogIndex: n.log[len(n.log)-1].Index,
-		LastLogTerm:  n.log[len(n.log)-1].Term,
-		CandidateId:  n.id,
+		Term:        n.currentTerm,
+		CandidateId: n.id,
+	}
+
+	if len(n.log) > 0 {
+		req.LastLogIndex = n.log[len(n.log)-1].Index
+		req.Term = n.log[len(n.log)-1].Term
 	}
 
 	responses := make(chan *RequestVoteResp, len(peers))
@@ -290,20 +295,10 @@ func (n *Node) beginElection() {
 		for range len(peers) {
 			select {
 			case resp := <-responses:
-				// If the Node's current role is no longer Candidate, this means we've conceded to a new Leader and have reverted to follower
-				if n.role != Candidate {
-					return
-				}
-
-				// If the term is smaller than the currentTerm, the electionTimer has expired and we've moved on to a new election.
-				if n.currentTerm > term {
-					return
-				}
-
 				if resp.VoteGranted && resp.Term == term {
 					votesGranted++
 					if votesGranted >= (len(n.cluster)/2)+1 {
-						n.electionResults <- struct{}{}
+						n.electionResults <- term
 						return
 					}
 				}
