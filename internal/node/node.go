@@ -290,8 +290,7 @@ func (n *Node) beginElection() {
 	}
 
 	go func(term uint64) {
-		var votesGranted int
-
+		votesGranted := 1
 		for range len(peers) {
 			select {
 			case resp := <-responses:
