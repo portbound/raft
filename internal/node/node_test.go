@@ -321,21 +321,35 @@ func TestNode_requestVote(t *testing.T) {
 
 func TestNode_beginElection(t *testing.T) {
 	tests := []struct {
-		name        string
-		candidateId string
-		peerResults map[string]*RequestVoteResp
-		wantWin     bool
+		name            string
+		candidateId     string
+		peerResults     map[string]*RequestVoteResp
+		wantTerm        uint64
+		wantWinElection bool
 	}{
 		{
-			name:        "Election won",
+			name:        "Election W with majority",
 			candidateId: "node-0",
 			peerResults: map[string]*RequestVoteResp{
 				"node-1": {Term: 1, VoteGranted: true},
 				"node-2": {Term: 1, VoteGranted: true},
-				"node-3": {Term: 1, VoteGranted: true},
-				"node-4": {Term: 1, VoteGranted: true},
+				"node-3": {Term: 1, VoteGranted: false},
+				"node-4": {Term: 1, VoteGranted: false},
 			},
-			wantWin: true,
+			wantTerm:        1,
+			wantWinElection: true,
+		},
+		{
+			name:        "Election L",
+			candidateId: "node-0",
+			peerResults: map[string]*RequestVoteResp{
+				"node-1": {Term: 1, VoteGranted: true},
+				"node-2": {Term: 2, VoteGranted: false},
+				"node-3": {Term: 2, VoteGranted: false},
+				"node-4": {Term: 2, VoteGranted: false},
+			},
+			wantTerm:        1,
+			wantWinElection: false,
 		},
 	}
 	for _, tt := range tests {
@@ -348,21 +362,21 @@ func TestNode_beginElection(t *testing.T) {
 			candidate := New(tt.candidateId, cluster)
 			cluster[tt.candidateId] = &mockPeer{}
 			candidate.cluster = cluster
-			candidate.log = append(candidate.log, &LogEntry{
-				Index: 0,
-				Term:  0,
-				Data:  []byte{},
-			})
-			candidate.electionResults = make(chan struct{})
+			candidate.electionResults = make(chan uint64, 1)
 			candidate.beginElection()
 
 			select {
-			case <-candidate.electionResults:
-				if !tt.wantWin {
-					t.Fatal("Election won unexpectedly")
+			case term := <-candidate.electionResults:
+				if !tt.wantWinElection {
+					t.Fatal("unexpectedly won election")
+				}
+				if term != tt.wantTerm {
+					t.Fatalf("stale term: got: %d, want: %d", term, tt.wantTerm)
 				}
 			case <-time.After(MaxRPCTimeout + 50*time.Millisecond):
-				t.Fatalf("expected election to be won, but electionResults was never signaled")
+				if tt.wantWinElection {
+					t.Fatal("timed out waiting for election result")
+				}
 			}
 		})
 	}
