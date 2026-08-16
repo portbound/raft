@@ -103,25 +103,23 @@ func (n *Node) Submit(ctx context.Context, b []byte) error {
 }
 
 func (n *Node) Run() {
-	n.resetElectionTimer()
+	n.roleTransition(Follower)
 	for {
 		select {
 		case call := <-n.appendEntriesCalls:
 			resp := n.appendEntries(call.recv)
 			if resp.Success {
-				n.stopElection()
-				n.resetElectionTimer()
+				// TODO don't really like that we're "transitioning" after every success
+				n.roleTransition(Follower)
 			}
 			call.reply <- resp
 		case call := <-n.requestVoteCalls:
 			call.reply <- n.requestVote(call.recv)
 		case <-n.electionTimer.C:
-			n.stopElection()
-			n.beginElection()
+			n.roleTransition(Candidate)
 		case term := <-n.electionWon:
 			if n.role == Candidate && n.currentTerm == term {
-				n.stopElection()
-				// TODO go lead
+				n.roleTransition(Leader)
 			}
 		case <-n.heartbeats:
 			n.sendHeartbeat()
@@ -160,6 +158,7 @@ func (n *Node) HandleRequestVote(ctx context.Context, req *RequestVoteReq) *Requ
 }
 
 func (n *Node) appendEntries(req *AppendEntriesReq) *AppendEntriesResp {
+	// TODO not sure if we want to handle this inside the roleTransition()
 	if req.Term > n.currentTerm {
 		n.currentTerm = req.Term
 		n.role = Follower
@@ -231,6 +230,7 @@ func (n *Node) requestVote(req *RequestVoteReq) *RequestVoteResp {
 		return &response
 	}
 
+	// TODO this block (also seen in requestVote) conflicts with the philosophy behind roleTransition()
 	if req.Term > n.currentTerm {
 		n.currentTerm = req.Term
 		n.role = Follower
@@ -264,17 +264,10 @@ func (n *Node) requestVote(req *RequestVoteReq) *RequestVoteResp {
 // A Node begins an election by incrementing it's current term, updating the it's role to Candidate, and voting for itself.
 // Next, the Node sends RequestVote RPCs to each of it's peers in the cluster before creating a separate Go routine processes the incoming RequestVoteResp's.
 // The Go routine notifies the orchestrator if an election has been won.
-func (n *Node) beginElection() {
+func (n *Node) startElection() {
+	// TODO not sure if we want to handle this inside the roleTransition()
 	n.currentTerm++
-	n.role = Candidate
 	n.votedFor = n.id
-
-	peers := map[string]Peer{}
-	for id, peer := range n.cluster {
-		if id != n.id {
-			peers[id] = peer
-		}
-	}
 
 	req := &RequestVoteReq{
 		Term:        n.currentTerm,
@@ -286,11 +279,18 @@ func (n *Node) beginElection() {
 		req.Term = n.log[len(n.log)-1].Term
 	}
 
-	responses := make(chan *RequestVoteResp, len(peers))
-
 	ctx, cancel := context.WithCancel(context.Background())
 	n.electionCtx = ctx
 	n.electionCancel = cancel
+
+	peers := map[string]Peer{}
+	for id, peer := range n.cluster {
+		if id != n.id {
+			peers[id] = peer
+		}
+	}
+
+	responses := make(chan *RequestVoteResp, len(peers))
 
 	for id, peer := range peers {
 		go func(id string, peer Peer) {

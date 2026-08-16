@@ -362,7 +362,7 @@ func TestNode_beginElection(t *testing.T) {
 			cluster[tt.candidateId] = &mockPeer{}
 			candidate.cluster = cluster
 			candidate.electionWon = make(chan uint64, 1)
-			candidate.beginElection()
+			candidate.startElection()
 
 			select {
 			case term := <-candidate.electionWon:
