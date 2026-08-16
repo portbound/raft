@@ -78,6 +78,9 @@ type Node struct {
 	commitIndex        uint64
 	lastApplied        uint64
 	mu                 sync.Mutex
+	heartBeatCtx       context.Context
+	heartBeatCancel    context.CancelFunc
+	heartbeats         chan struct{}
 	electionCtx        context.Context
 	electionCancel     context.CancelFunc
 	electionWon        chan uint64
@@ -120,6 +123,8 @@ func (n *Node) Run() {
 				n.stopElection()
 				// TODO go lead
 			}
+		case <-n.heartbeats:
+			n.sendHeartbeat()
 		}
 	}
 }
@@ -335,5 +340,77 @@ func (n *Node) stopElection() {
 		n.electionCancel()
 		n.electionCancel = nil
 		n.electionCtx = nil
+	}
+}
+
+func (n *Node) stopHeartbeats() {
+	if n.heartBeatCtx != nil {
+		n.heartBeatCancel()
+		n.heartBeatCancel = nil
+		n.heartBeatCtx = nil
+	}
+}
+
+func (n *Node) startHeartbeats() {
+	ctx, cancel := context.WithCancel(context.Background())
+	n.heartBeatCtx = ctx
+	n.heartBeatCancel = cancel
+
+	ticker := time.NewTicker(50 * time.Millisecond) // TODO not sure 50 ms is right
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				<-n.heartbeats
+			case <-n.heartBeatCtx.Done():
+				return
+			}
+		}
+	}()
+}
+
+func (n *Node) sendHeartbeat() {
+	req := &AppendEntriesReq{
+		Term:         n.currentTerm,
+		LeaderId:     n.id,
+		Entries:      []*LogEntry{},
+		LeaderCommit: n.commitIndex,
+		PrevLogIndex: 0,
+		PrevLogTerm:  0,
+	}
+
+	if len(n.log) > 0 {
+		req.PrevLogIndex = n.log[len(n.log)-1].Index
+		req.PrevLogTerm = n.log[len(n.log)-1].Term
+	}
+
+	for id, node := range n.cluster {
+		if id != n.id {
+			node.AppendEntries(n.heartBeatCtx, req) // TODO not sure if this needs to carry a separate ctx
+		}
+	}
+}
+
+func (n *Node) roleTransition(newRole role) {
+
+	currentRole := n.role
+
+	switch currentRole {
+	case Follower: // TODO nodes start in follower, not sure we need to do anything here
+	case Candidate:
+		n.stopElection()
+	case Leader:
+		n.stopHeartbeats()
+	}
+
+	n.role = newRole
+
+	switch newRole {
+	case Follower:
+		n.resetElectionTimer()
+	case Candidate:
+		n.startElection()
+	case Leader:
+		n.startHeartbeats()
 	}
 }
