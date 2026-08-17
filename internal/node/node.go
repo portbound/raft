@@ -88,6 +88,7 @@ type Node struct {
 	appendEntriesCalls chan *appendEntriesCall
 }
 
+// New initializes a new Node instance.
 func New(id string, cluster map[string]Peer) *Node {
 	return &Node{
 		id:          id,
@@ -102,6 +103,7 @@ func (n *Node) Submit(ctx context.Context, b []byte) error {
 	return nil
 }
 
+// Run contains the main Raft event loop. It blocks, listening on various channels to drive role transitions and maintain consensus.
 func (n *Node) Run() {
 	n.roleTransition(Follower)
 	for {
@@ -127,6 +129,7 @@ func (n *Node) Run() {
 	}
 }
 
+// HandleRequestVote processes incoming AppendEntries RPCs. Waits for a valid reply, or cancels on ctx.Done().
 func (n *Node) HandleAppendEntries(ctx context.Context, req *AppendEntriesReq) *AppendEntriesResp {
 	resp := make(chan *AppendEntriesResp, 1)
 	n.appendEntriesCalls <- &appendEntriesCall{
@@ -142,6 +145,7 @@ func (n *Node) HandleAppendEntries(ctx context.Context, req *AppendEntriesReq) *
 	}
 }
 
+// HandleRequestVote processes incoming RequestVote RPCs. Waits for a valid reply, or cancels on ctx.Done().
 func (n *Node) HandleRequestVote(ctx context.Context, req *RequestVoteReq) *RequestVoteResp {
 	resp := make(chan *RequestVoteResp, 1)
 	n.requestVoteCalls <- &requestVoteCall{
@@ -157,6 +161,7 @@ func (n *Node) HandleRequestVote(ctx context.Context, req *RequestVoteReq) *Requ
 	}
 }
 
+// appendEntries implements Raft's core append-entries logic.
 func (n *Node) appendEntries(req *AppendEntriesReq) *AppendEntriesResp {
 	// TODO not sure if we want to handle this inside the roleTransition()
 	if req.Term > n.currentTerm {
@@ -219,6 +224,7 @@ func (n *Node) appendEntries(req *AppendEntriesReq) *AppendEntriesResp {
 	return &response
 }
 
+// requestVote implements Raft's core vote-granting logic.
 func (n *Node) requestVote(req *RequestVoteReq) *RequestVoteResp {
 	response := RequestVoteResp{
 		Term:        n.currentTerm,
@@ -261,9 +267,7 @@ func (n *Node) requestVote(req *RequestVoteReq) *RequestVoteResp {
 	return &response
 }
 
-// A Node begins an election by incrementing it's current term, updating the it's role to Candidate, and voting for itself.
-// Next, the Node sends RequestVote RPCs to each of it's peers in the cluster before creating a separate Go routine processes the incoming RequestVoteResp's.
-// The Go routine notifies the orchestrator if an election has been won.
+// startElection initiates a new election cycle.
 func (n *Node) startElection() {
 	// TODO not sure if we want to handle this inside the roleTransition()
 	n.currentTerm++
@@ -324,6 +328,7 @@ func (n *Node) startElection() {
 	}(n.currentTerm)
 }
 
+// resetElectionTimer sets or resets the randomized timer used for measuring Follower timeout. It is also used at the start of a Candidate's election.
 func (n *Node) resetElectionTimer() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -335,6 +340,7 @@ func (n *Node) resetElectionTimer() {
 	n.electionTimer = time.NewTimer(time.Duration(rand.IntN(300-150+1)+150) * time.Millisecond)
 }
 
+// stopElection cancels any ongoing election and cleans up related state.
 func (n *Node) stopElection() {
 	if n.electionCtx != nil {
 		n.electionCancel()
@@ -343,14 +349,7 @@ func (n *Node) stopElection() {
 	}
 }
 
-func (n *Node) stopHeartbeats() {
-	if n.heartBeatCtx != nil {
-		n.heartBeatCancel()
-		n.heartBeatCancel = nil
-		n.heartBeatCtx = nil
-	}
-}
-
+// startHeartbeats begins the periodic sending of heartbeats when a node is elected as Leader.
 func (n *Node) startHeartbeats() {
 	ctx, cancel := context.WithCancel(context.Background())
 	n.heartBeatCtx = ctx
@@ -369,6 +368,16 @@ func (n *Node) startHeartbeats() {
 	}()
 }
 
+// stopHeartbeats stops any ongoing heartBeats and cleans up related state.
+func (n *Node) stopHeartbeats() {
+	if n.heartBeatCtx != nil {
+		n.heartBeatCancel()
+		n.heartBeatCancel = nil
+		n.heartBeatCtx = nil
+	}
+}
+
+// sendHeartbeat sends empty AppendEntries requests to all peers. This is the primary mechanism for maintaining leadership and replicating state across the cluster.
 func (n *Node) sendHeartbeat() {
 	req := &AppendEntriesReq{
 		Term:         n.currentTerm,
@@ -391,8 +400,8 @@ func (n *Node) sendHeartbeat() {
 	}
 }
 
+// roleTransition handles deterministic state change, and cleanup when Node role is updated.
 func (n *Node) roleTransition(newRole role) {
-
 	currentRole := n.role
 
 	switch currentRole {
