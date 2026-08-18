@@ -109,14 +109,19 @@ func (n *Node) Run() {
 	for {
 		select {
 		case call := <-n.appendEntriesCalls:
+			n.checkStaleTerm(call.recv.Term)
 			resp := n.appendEntries(call.recv)
 			if resp.Success {
-				// TODO don't really like that we're "transitioning" after every success
 				n.roleTransition(Follower)
 			}
 			call.reply <- resp
 		case call := <-n.requestVoteCalls:
-			call.reply <- n.requestVote(call.recv)
+			n.checkStaleTerm(call.recv.Term)
+			resp := n.requestVote(call.recv)
+			if resp.VoteGranted {
+				n.roleTransition(Follower)
+			}
+			call.reply <- resp
 		case <-n.electionTimer.C:
 			n.roleTransition(Candidate)
 		case term := <-n.electionWon:
@@ -126,6 +131,14 @@ func (n *Node) Run() {
 		case <-n.heartbeats:
 			n.sendHeartbeat()
 		}
+	}
+}
+
+func (n *Node) checkStaleTerm(term uint64) {
+	if term > n.currentTerm {
+		n.currentTerm = term
+		n.votedFor = ""
+		n.roleTransition(Follower)
 	}
 }
 
@@ -163,21 +176,14 @@ func (n *Node) HandleRequestVote(ctx context.Context, req *RequestVoteReq) *Requ
 
 // appendEntries implements Raft's core append-entries logic.
 func (n *Node) appendEntries(req *AppendEntriesReq) *AppendEntriesResp {
-	// TODO not sure if we want to handle this inside the roleTransition()
-	if req.Term > n.currentTerm {
-		n.currentTerm = req.Term
-		n.role = Follower
-		n.votedFor = ""
-	}
-
-	response := AppendEntriesResp{
+	response := &AppendEntriesResp{
 		Term:    n.currentTerm,
 		Success: false,
 	}
 
 	// 1. Reply false if term < currentTerm (§5.1)
 	if req.Term < n.currentTerm {
-		return &response
+		return response
 	}
 
 	// 2. Reply false if n.log doesn’t contain an entry at request.PrevLogIndex whose term matches request.PrevLogTerm (§5.3)
@@ -221,7 +227,7 @@ func (n *Node) appendEntries(req *AppendEntriesReq) *AppendEntriesResp {
 
 	response.Success = true
 
-	return &response
+	return response
 }
 
 // requestVote implements Raft's core vote-granting logic.
@@ -234,13 +240,6 @@ func (n *Node) requestVote(req *RequestVoteReq) *RequestVoteResp {
 	// 1. Reply false if term < currentTerm (§5.1)
 	if req.Term < n.currentTerm {
 		return &response
-	}
-
-	// TODO this block (also seen in requestVote) conflicts with the philosophy behind roleTransition()
-	if req.Term > n.currentTerm {
-		n.currentTerm = req.Term
-		n.role = Follower
-		n.votedFor = ""
 	}
 
 	// 2. If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
