@@ -20,7 +20,7 @@ func (p *peer) AppendEntries(ctx context.Context, req *node.AppendEntriesReq) (*
 		entries[i] = &proto.LogEntry{
 			Index: e.Index,
 			Term:  e.Term,
-			Data:  e.Data,
+			Cmd:   e.Cmd,
 		}
 	}
 

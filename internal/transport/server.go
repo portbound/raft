@@ -21,7 +21,7 @@ func (s *RaftServer) AppendEntries(ctx context.Context, request *proto.AppendEnt
 		entries[i] = &node.LogEntry{
 			Index: e.Index,
 			Term:  e.Term,
-			Data:  e.Data,
+			Cmd:   e.Cmd,
 		}
 	}
 
