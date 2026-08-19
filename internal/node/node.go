@@ -41,8 +41,8 @@ type AppendEntriesResp struct {
 }
 
 type appendEntriesCall struct {
-	recv  *AppendEntriesReq
-	reply chan *AppendEntriesResp
+	req     *AppendEntriesReq
+	results chan *AppendEntriesResp
 }
 
 type RequestVoteReq struct {
@@ -58,8 +58,8 @@ type RequestVoteResp struct {
 }
 
 type requestVoteCall struct {
-	recv  *RequestVoteReq
-	reply chan *RequestVoteResp
+	req     *RequestVoteReq
+	results chan *RequestVoteResp
 }
 
 type LogEntry struct {
@@ -116,19 +116,19 @@ func (n *Node) Run() {
 	for {
 		select {
 		case call := <-n.appendEntriesCalls:
-			n.checkStaleTerm(call.recv.Term)
-			resp := n.appendEntries(call.recv)
+			n.checkStaleTerm(call.req.Term)
+			resp := n.appendEntries(call.req)
 			if resp.Success {
 				n.roleTransition(Follower)
 			}
-			call.reply <- resp
+			call.results <- resp
 		case call := <-n.requestVoteCalls:
-			n.checkStaleTerm(call.recv.Term)
-			resp := n.requestVote(call.recv)
+			n.checkStaleTerm(call.req.Term)
+			resp := n.requestVote(call.req)
 			if resp.VoteGranted {
 				n.roleTransition(Follower)
 			}
-			call.reply <- resp
+			call.results <- resp
 		case <-n.electionTimer.C:
 			n.roleTransition(Candidate)
 		case term := <-n.electionWon:
@@ -151,15 +151,15 @@ func (n *Node) checkStaleTerm(term uint64) {
 
 // HandleRequestVote processes incoming AppendEntries RPCs. Waits for a valid reply, or cancels on ctx.Done().
 func (n *Node) HandleAppendEntries(ctx context.Context, req *AppendEntriesReq) *AppendEntriesResp {
-	resp := make(chan *AppendEntriesResp, 1)
+	results := make(chan *AppendEntriesResp, 1)
 	n.appendEntriesCalls <- &appendEntriesCall{
-		recv:  req,
-		reply: resp,
+		req:     req,
+		results: results,
 	}
 
 	select {
-	case reply := <-resp:
-		return reply
+	case resp := <-results:
+		return resp
 	case <-ctx.Done():
 		return nil
 	}
@@ -167,15 +167,15 @@ func (n *Node) HandleAppendEntries(ctx context.Context, req *AppendEntriesReq) *
 
 // HandleRequestVote processes incoming RequestVote RPCs. Waits for a valid reply, or cancels on ctx.Done().
 func (n *Node) HandleRequestVote(ctx context.Context, req *RequestVoteReq) *RequestVoteResp {
-	resp := make(chan *RequestVoteResp, 1)
+	results := make(chan *RequestVoteResp, 1)
 	n.requestVoteCalls <- &requestVoteCall{
-		recv:  req,
-		reply: resp,
+		req:     req,
+		results: results,
 	}
 
 	select {
-	case reply := <-resp:
-		return reply
+	case resp := <-results:
+		return resp
 	case <-ctx.Done():
 		return nil
 	}
@@ -333,18 +333,6 @@ func (n *Node) startElection() {
 	}(n.currentTerm)
 }
 
-// resetElectionTimer sets or resets the randomized timer used for measuring Follower timeout. It is also used at the start of a Candidate's election.
-func (n *Node) resetElectionTimer() {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	if n.electionTimer != nil {
-		n.electionTimer.Stop()
-	}
-
-	n.electionTimer = time.NewTimer(time.Duration(rand.IntN(300-150+1)+150) * time.Millisecond)
-}
-
 // stopElection cancels any ongoing election and cleans up related state.
 func (n *Node) stopElection() {
 	if n.electionCtx != nil {
@@ -403,6 +391,18 @@ func (n *Node) sendHeartbeat() {
 			node.AppendEntries(n.heartBeatCtx, req) // TODO not sure if this needs to carry a separate ctx
 		}
 	}
+}
+
+// resetElectionTimer sets or resets the randomized timer used for measuring Follower timeout. It is also used at the start of a Candidate's election.
+func (n *Node) resetElectionTimer() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if n.electionTimer != nil {
+		n.electionTimer.Stop()
+	}
+
+	n.electionTimer = time.NewTimer(time.Duration(rand.IntN(300-150+1)+150) * time.Millisecond)
 }
 
 // roleTransition handles deterministic state change, and cleanup when Node role is updated.
