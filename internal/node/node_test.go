@@ -22,42 +22,54 @@ func (p *mockPeer) RequestVote(ctx context.Context, req *RequestVoteReq) (*Reque
 
 func TestNode_appendEntries(t *testing.T) {
 	tests := []struct {
-		name        string
-		initialTerm uint64
-		req         *AppendEntriesReq
-		wantSuccess bool
-		wantLog     []*LogEntry
+		name            string
+		initialTerm     uint64
+		initialLog      []*LogEntry
+		req             *AppendEntriesReq
+		wantSuccess     bool
+		wantCommitIndex uint64
+		wantLog         []*LogEntry
 	}{
 		{
-			name:        "valid_heartbeat_received",
-			initialTerm: 0,
-			req:         &AppendEntriesReq{Entries: []*LogEntry{}},
-			wantSuccess: true,
-			wantLog:     []*LogEntry{},
+			name:            "valid_heartbeat_received",
+			initialTerm:     0,
+			req:             &AppendEntriesReq{Term: 1, Entries: []*LogEntry{}},
+			wantSuccess:     true,
+			wantCommitIndex: 0,
+			wantLog:         []*LogEntry{},
+		},
+		{
+			name:            "heartbeat_received_from_stale_leader",
+			initialTerm:     2,
+			req:             &AppendEntriesReq{Term: 1, Entries: []*LogEntry{}},
+			wantSuccess:     false,
+			wantCommitIndex: 0,
+			wantLog:         []*LogEntry{},
 		},
 		{
 			name:        "append_single_entry",
 			initialTerm: 0,
 			req: &AppendEntriesReq{
 				Term:         1,
-				LeaderId:     "node-1",
+				LeaderId:     "node-0",
 				PrevLogIndex: 0,
 				PrevLogTerm:  0,
 				Entries: []*LogEntry{
 					{
 						Index: 1,
 						Term:  1,
-						Cmd:   []byte{'t'},
+						Cmd:   []byte{},
 					},
 				},
 				LeaderCommit: 0,
 			},
-			wantSuccess: true,
+			wantSuccess:     true,
+			wantCommitIndex: 0,
 			wantLog: []*LogEntry{
 				{
 					Index: 1,
 					Term:  1,
-					Cmd:   []byte{'t'},
+					Cmd:   []byte{},
 				},
 			},
 		},
@@ -66,41 +78,112 @@ func TestNode_appendEntries(t *testing.T) {
 			initialTerm: 0,
 			req: &AppendEntriesReq{
 				Term:         1,
-				LeaderId:     "",
+				LeaderId:     "node-0",
 				PrevLogIndex: 0,
 				PrevLogTerm:  0,
 				Entries: []*LogEntry{
 					{
 						Index: 1,
 						Term:  1,
-						Cmd:   []byte{'t'},
+						Cmd:   []byte{},
 					},
 					{
 						Index: 2,
 						Term:  1,
-						Cmd:   []byte{'r'},
+						Cmd:   []byte{},
 					},
 				},
 				LeaderCommit: 0,
 			},
-			wantSuccess: true,
+			wantSuccess:     true,
+			wantCommitIndex: 0,
 			wantLog: []*LogEntry{
 				{
 					Index: 1,
 					Term:  1,
-					Cmd:   []byte{'t'},
+					Cmd:   []byte{},
 				},
 				{
 					Index: 2,
 					Term:  1,
-					Cmd:   []byte{'r'},
+					Cmd:   []byte{},
 				},
 			},
 		},
-		// {
-		// 	name: "log_with_mismatched_index_and_term",
-		// 	req: &AppendEntriesReq{}
-		// },
+		{
+			name:        "log_with_mismatched_index_and_term",
+			initialTerm: 1,
+			initialLog: []*LogEntry{
+				{
+					Index: 1,
+					Term:  1,
+					Cmd:   []byte{},
+				},
+				{
+					Index: 2,
+					Term:  1,
+					Cmd:   []byte{},
+				},
+				{
+					Index: 3,
+					Term:  1,
+					Cmd:   []byte{},
+				},
+			},
+			req: &AppendEntriesReq{
+				Term:         3,
+				LeaderId:     "",
+				PrevLogIndex: 0,
+				PrevLogTerm:  0,
+				Entries: []*LogEntry{
+					{
+						Index: 3,
+						Term:  2,
+						Cmd:   []byte{},
+					},
+					{
+						Index: 4,
+						Term:  2,
+						Cmd:   []byte{},
+					},
+					{
+						Index: 5,
+						Term:  3,
+						Cmd:   []byte{},
+					},
+				},
+				LeaderCommit: 4,
+			},
+			wantSuccess:     true,
+			wantCommitIndex: 4,
+			wantLog: []*LogEntry{
+				{
+					Index: 1,
+					Term:  1,
+					Cmd:   []byte{},
+				},
+				{
+					Index: 2,
+					Term:  1,
+					Cmd:   []byte{},
+				},
+				{
+					Index: 3,
+					Term:  2,
+					Cmd:   []byte{},
+				},
+				{
+					Index: 4,
+					Term:  2,
+					Cmd:   []byte{},
+				},
+				{
+					Index: 5,
+					Term:  3,
+					Cmd:   []byte{},
+				},
+			},
+		},
 		{
 			name:        "node_with_stale_term",
 			initialTerm: 5,
@@ -108,11 +191,64 @@ func TestNode_appendEntries(t *testing.T) {
 			wantSuccess: false,
 			wantLog:     []*LogEntry{},
 		},
+		{
+			name:        "node_is_behind_on_log",
+			initialTerm: 1,
+			initialLog: []*LogEntry{
+				{
+					Index: 1,
+					Term:  1,
+					Cmd:   []byte{},
+				},
+				{
+					Index: 2,
+					Term:  1,
+					Cmd:   []byte{},
+				},
+				{
+					Index: 3,
+					Term:  1,
+					Cmd:   []byte{},
+				},
+			},
+			req: &AppendEntriesReq{
+				Term:         2,
+				LeaderId:     "node-0",
+				PrevLogIndex: 6,
+				PrevLogTerm:  2,
+				Entries: []*LogEntry{
+					{
+						Index: 7,
+						Term:  2,
+						Cmd:   []byte{},
+					},
+				},
+			},
+			wantSuccess: false,
+			wantLog: []*LogEntry{
+				{
+					Index: 1,
+					Term:  1,
+					Cmd:   []byte{},
+				},
+				{
+					Index: 2,
+					Term:  1,
+					Cmd:   []byte{},
+				},
+				{
+					Index: 3,
+					Term:  1,
+					Cmd:   []byte{},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			n := New("node-1", map[string]Peer{})
 			n.currentTerm = tt.initialTerm
+			n.log = tt.initialLog
 
 			got := n.appendEntries(tt.req)
 
@@ -125,6 +261,10 @@ func TestNode_appendEntries(t *testing.T) {
 
 			if !tt.wantSuccess {
 				t.Fatal("RPC suceeded unexpectedly")
+			}
+
+			if n.commitIndex != tt.wantCommitIndex {
+				t.Fatalf("commitIndexes do not match: got %d, want %d", n.commitIndex, tt.wantCommitIndex)
 			}
 
 			if len(n.log) != len(tt.wantLog) {
