@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+// Notes
+// Log uses 1-based indexing
+// Term uses 1-based indexing
+
 type role int
 
 const (
@@ -101,6 +105,7 @@ func New(id string, cluster map[string]Peer) *Node {
 	}
 }
 
+// TODO method doc
 func (n *Node) Submit(ctx context.Context, b []byte) error {
 	return nil
 }
