@@ -189,12 +189,11 @@ func (n *Node) appendEntries(req *AppendEntriesReq) *AppendEntriesResp {
 	// 2. Reply false if n.log doesn’t contain an entry at request.PrevLogIndex whose term matches request.PrevLogTerm (§5.3)
 	if req.PrevLogIndex > 0 {
 		if int(req.PrevLogIndex) > len(n.log) {
-			return &response
+			return response
 		}
 
-		prevEntry := n.log[req.PrevLogIndex-1]
-		if prevEntry.Term != req.PrevLogTerm {
-			return &response
+		if n.log[req.PrevLogIndex-1].Term != req.PrevLogTerm {
+			return response
 		}
 	}
 
