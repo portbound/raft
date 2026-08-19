@@ -15,6 +15,8 @@ const (
 	Leader
 )
 
+const HeartBeatTimeout time.Duration = 50 * time.Millisecond
+
 type Peer interface {
 	AppendEntries(ctx context.Context, req *AppendEntriesReq) (*AppendEntriesResp, error)
 	RequestVote(ctx context.Context, req *RequestVoteReq) (*RequestVoteResp, error)
@@ -353,7 +355,7 @@ func (n *Node) startHeartbeats() {
 	n.heartBeatCtx = ctx
 	n.heartBeatCancel = cancel
 
-	ticker := time.NewTicker(50 * time.Millisecond) // TODO not sure 50 ms is right
+	ticker := time.NewTicker(HeartBeatTimeout) // TODO not sure 50 ms is right
 	go func() {
 		for {
 			select {
