@@ -115,6 +115,15 @@ func (n *Node) Run() {
 	n.roleTransition(Follower)
 	for {
 		select {
+		case submission := <-n.submissions:
+			if n.role != Leader {
+				// TODO redirect to leader
+			}
+
+			// Spec suggests that it's possible for mmultiple apEnt RPCs to come in at once
+			// if that's the case, we should probably just batch them here?
+
+			n.replicateCmds([][]byte)
 		case call := <-n.appendEntriesCalls:
 			n.checkStaleTerm(call.req.Term)
 			resp := n.appendEntries(call.req)
@@ -138,14 +147,6 @@ func (n *Node) Run() {
 		case <-n.heartbeats:
 			n.sendHeartbeat()
 		}
-	}
-}
-
-func (n *Node) checkStaleTerm(term uint64) {
-	if term > n.currentTerm {
-		n.currentTerm = term
-		n.votedFor = ""
-		n.roleTransition(Follower)
 	}
 }
 
@@ -272,6 +273,64 @@ func (n *Node) requestVote(req *RequestVoteReq) *RequestVoteResp {
 	return &response
 }
 
+func (n *Node) checkStaleTerm(term uint64) {
+	if term > n.currentTerm {
+		n.currentTerm = term
+		n.votedFor = ""
+		n.roleTransition(Follower)
+	}
+}
+
+func (n *Node) replicateCmds(cmds [][]byte) {
+	entries := []*LogEntry{}
+	for _, cmd := range cmds {
+		entry := &LogEntry{
+			Index: uint64(len(n.log) + 1),
+			Term:  n.currentTerm,
+			Cmd:   cmd,
+		}
+		entries = append(entries, entry)
+		n.log = append(n.log, entry)
+	}
+
+	peers := map[string]Peer{}
+	for id, peer := range n.cluster {
+		if n.id != id {
+			peers[id] = peer
+		}
+	}
+	responses := make(chan *AppendEntriesResp, len(peers))
+
+	// TODO need to revisit this ctx not sure this is right
+	// we're supposed to send these indefinitely, but we'll likely want some backoff.
+	ctx, cancel := context.WithTimeout(ctx.Background, 50*time.Millisecond)
+	for id, peer := range peers {
+		go func(id string, peer Peer) {
+			resp, err := peer.AppendEntries(ctx, &AppendEntriesReq{
+				Term:         n.currentTerm,
+				LeaderId:     n.id,
+				PrevLogIndex: n.log[len(n.log)-1].Index,
+				PrevLogTerm:  n.log[len(n.log)-1].Term,
+				Entries:      entries,
+				LeaderCommit: n.commitIndex,
+			})
+			if err != nil {
+				// TODO not sure how to handle this error - not going to return, but maybe logging is worth?
+				// TODO we need to know the term, right?
+				resp = &AppendEntriesResp{Success: false}
+			}
+			responses <- resp
+
+		}(id, peer)
+	}
+
+	go func() {
+
+	}()
+
+	// when ack by majority of servers, signal
+}
+
 // startElection initiates a new election cycle.
 func (n *Node) startElection() {
 	// TODO not sure if we want to handle this inside the roleTransition()
@@ -298,7 +357,6 @@ func (n *Node) startElection() {
 			peers[id] = peer
 		}
 	}
-
 	responses := make(chan *RequestVoteResp, len(peers))
 
 	for id, peer := range peers {
@@ -306,6 +364,7 @@ func (n *Node) startElection() {
 			resp, err := peer.RequestVote(n.electionCtx, req)
 			if err != nil {
 				// TODO not sure how to handle this error - not going to return, but maybe logging is worth?
+				// TODO we need to know the term, right?
 				resp = &RequestVoteResp{VoteGranted: false}
 			}
 			responses <- resp
